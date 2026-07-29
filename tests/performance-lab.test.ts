@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPerformanceLabSnapshot } from "@/lib/performance-lab";
+import {
+  buildPerformanceLabSnapshot,
+  classifyActivityFamily,
+} from "@/lib/performance-lab";
 import type { NormalizedGarminActivity } from "@/lib/garmin-storage";
 import type { DailyRecoveryRecord } from "@/lib/recovery-storage";
 import type { SessionLog } from "@/lib/types";
@@ -74,8 +77,37 @@ function log(completedAt: string): SessionLog {
   };
 }
 
+describe("classifyActivityFamily", () => {
+  it("uses both Garmin type and title to preserve useful activity families", () => {
+    expect(classifyActivityFamily(activity("run", "2026-07-28T07:00:00.000Z"))).toBe("run");
+    expect(
+      classifyActivityFamily(
+        activity("trail", "2026-07-28T07:00:00.000Z", {
+          activityType: "cardio",
+          title: "Trail run around Helvellyn",
+        }),
+      ),
+    ).toBe("run");
+    expect(
+      classifyActivityFamily(
+        activity("lift", "2026-07-28T07:00:00.000Z", {
+          activityType: "strength_training",
+          title: "Hawkeye",
+        }),
+      ),
+    ).toBe("strength");
+    expect(
+      classifyActivityFamily(
+        activity("ride", "2026-07-28T07:00:00.000Z", {
+          activityType: "cycling",
+        }),
+      ),
+    ).toBe("cycle");
+  });
+});
+
 describe("buildPerformanceLabSnapshot", () => {
-  it("summarises recent running volume, terrain and recovery", () => {
+  it("summarises recent running volume, terrain, all-training time and recovery", () => {
     const snapshot = buildPerformanceLabSnapshot(
       [
         activity("one", "2026-07-28T07:00:00.000Z"),
@@ -95,15 +127,24 @@ describe("buildPerformanceLabSnapshot", () => {
       new Date("2026-07-29T12:00:00.000Z"),
     );
 
+    expect(snapshot.activities28d).toBe(3);
     expect(snapshot.runningActivities28d).toBe(3);
     expect(snapshot.runningDistanceKm28d).toBe(23);
     expect(snapshot.elevationGainM28d).toBe(390);
     expect(snapshot.runningHours28d).toBe(1.9);
+    expect(snapshot.totalHours28d).toBe(1.9);
     expect(snapshot.averagePaceSecondsPerKm).toBe(300);
     expect(snapshot.averageHeartRateBpm).toBe(150);
     expect(snapshot.averageCadenceSpm).toBe(170);
+    expect(snapshot.averageAerobicTrainingEffect).toBe(3.5);
     expect(snapshot.recoveryDays14d).toBe(2);
+    expect(snapshot.latestRecovery?.date).toBe("2026-07-28");
     expect(snapshot.manualSessions28d).toBe(1);
+    expect(snapshot.activityFamilies[0]).toMatchObject({
+      family: "run",
+      sessions: 3,
+      distanceKm: 23,
+    });
     expect(snapshot.categories[0]).toMatchObject({
       category: "strength",
       sessions: 1,
@@ -111,12 +152,14 @@ describe("buildPerformanceLabSnapshot", () => {
     });
   });
 
-  it("keeps non-running Garmin activities out of running distance", () => {
+  it("keeps non-running Garmin activities out of mileage while retaining their time", () => {
     const snapshot = buildPerformanceLabSnapshot(
       [
         activity("run", "2026-07-28T07:00:00.000Z"),
         activity("ride", "2026-07-27T07:00:00.000Z", {
           activityType: "cycling",
+          title: "Bike",
+          durationSeconds: 7_200,
           distanceMeters: 40_000,
           elevationGainMeters: 800,
         }),
@@ -130,5 +173,55 @@ describe("buildPerformanceLabSnapshot", () => {
     expect(snapshot.runningActivities28d).toBe(1);
     expect(snapshot.runningDistanceKm28d).toBe(10);
     expect(snapshot.elevationGainM28d).toBe(100);
+    expect(snapshot.totalHours28d).toBe(2.8);
+    expect(snapshot.activityFamilies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ family: "cycle", minutes: 120 }),
+        expect.objectContaining({ family: "run", minutes: 50 }),
+      ]),
+    );
+  });
+
+  it("produces a useful hybrid brief when training exists but running does not", () => {
+    const snapshot = buildPerformanceLabSnapshot(
+      [
+        activity("strength", "2026-07-28T07:00:00.000Z", {
+          activityType: "strength_training",
+          title: "Strength",
+          durationSeconds: 3_600,
+          distanceMeters: null,
+          averageSpeedMps: null,
+          averagePaceSecondsPerKm: null,
+          elevationGainMeters: null,
+        }),
+        activity("cardio", "2026-07-27T07:00:00.000Z", {
+          activityType: "cardio",
+          title: "Cardio",
+          durationSeconds: 2_400,
+          distanceMeters: null,
+          averageSpeedMps: null,
+          averagePaceSecondsPerKm: null,
+          elevationGainMeters: null,
+        }),
+        activity("lift-two", "2026-07-25T07:00:00.000Z", {
+          activityType: "strength_training",
+          title: "Hawkeye",
+          durationSeconds: 3_000,
+          distanceMeters: null,
+          averageSpeedMps: null,
+          averagePaceSecondsPerKm: null,
+          elevationGainMeters: null,
+        }),
+      ],
+      [recovery("2026-07-28")],
+      [],
+      new Date("2026-07-29T12:00:00.000Z"),
+    );
+
+    expect(snapshot.runningActivities28d).toBe(0);
+    expect(snapshot.totalHours28d).toBe(2.5);
+    expect(snapshot.coachBrief.title).toContain("running evidence is not");
+    expect(snapshot.coachBrief.evidence).toContain("3 Garmin activities");
+    expect(snapshot.coverage.timedActivities).toBe(3);
   });
 });

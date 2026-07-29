@@ -43,7 +43,7 @@ export const navItems: NavItem[] = [
   },
   {
     label: "Insights",
-    href: "/insights",
+    href: "/insights/performance",
     icon: ChartNoAxesCombined,
     match: (pathname) =>
       pathname.startsWith("/insights") || pathname.startsWith("/progress"),

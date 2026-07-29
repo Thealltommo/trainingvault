@@ -15,6 +15,25 @@ def _as_bool(value: str | None, *, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _as_int(
+    value: str | None,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+    name: str,
+) -> int:
+    if value is None or not value.strip():
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if not minimum <= parsed <= maximum:
+        raise ValueError(f"{name} must be between {minimum} and {maximum}")
+    return parsed
+
+
 def token_store_path_from_env(
     *,
     load_environment_file: bool = True,
@@ -46,6 +65,12 @@ class Settings:
     interactive_auth: bool = False
     host: str = "127.0.0.1"
     port: int = 8765
+    environment: str = "development"
+    rate_limit_per_minute: int = 180
+
+    @property
+    def production(self) -> bool:
+        return self.environment in {"production", "prod"}
 
     @classmethod
     def from_env(cls, *, load_environment_file: bool = True) -> "Settings":
@@ -53,6 +78,8 @@ class Settings:
 
         Local ``.env`` loading is convenient for the standalone service; the
         file remains ignored. Production should inject environment variables.
+        Railway and similar platforms provide ``PORT`` automatically, so it is
+        used as a fallback when ``GARMIN_BRIDGE_PORT`` is not explicitly set.
         """
         if load_environment_file:
             load_dotenv(override=False)
@@ -61,14 +88,22 @@ class Settings:
             load_environment_file=False,
         )
 
-        port_value = os.getenv("GARMIN_BRIDGE_PORT", "").strip()
-        try:
-            port = int(port_value) if port_value else 8765
-        except ValueError as exc:
-            raise ValueError("GARMIN_BRIDGE_PORT must be an integer") from exc
-
-        if not 1 <= port <= 65_535:
-            raise ValueError("GARMIN_BRIDGE_PORT must be between 1 and 65535")
+        bridge_port = os.getenv("GARMIN_BRIDGE_PORT", "").strip()
+        platform_port = os.getenv("PORT", "").strip()
+        port = _as_int(
+            bridge_port or platform_port,
+            default=8765,
+            minimum=1,
+            maximum=65_535,
+            name="GARMIN_BRIDGE_PORT/PORT",
+        )
+        rate_limit = _as_int(
+            os.getenv("GARMIN_BRIDGE_RATE_LIMIT_PER_MINUTE"),
+            default=180,
+            minimum=30,
+            maximum=10_000,
+            name="GARMIN_BRIDGE_RATE_LIMIT_PER_MINUTE",
+        )
 
         return cls(
             email=os.getenv("GARMIN_EMAIL") or None,
@@ -78,4 +113,7 @@ class Settings:
             interactive_auth=_as_bool(os.getenv("GARMIN_INTERACTIVE_AUTH")),
             host=os.getenv("GARMIN_BRIDGE_HOST", "").strip() or "127.0.0.1",
             port=port,
+            environment=os.getenv("GARMIN_BRIDGE_ENV", "development").strip().lower()
+            or "development",
+            rate_limit_per_minute=rate_limit,
         )

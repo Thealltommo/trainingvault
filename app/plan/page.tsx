@@ -49,6 +49,10 @@ import {
   useSessionLogs,
   useWorkoutOverrides,
 } from "@/lib/storage";
+import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
 import type { WorkoutIntensity } from "@/lib/types";
 
 type CalendarView = "week" | "month";
@@ -520,6 +524,7 @@ export default function PlanPage() {
   const lifecycle = useSessionLifecycleOverrides();
   const logs = useSessionLogs();
   const overrides = useWorkoutOverrides();
+  const garmin = useGarminLocalState();
   const [view, setView] = useState<CalendarView>("week");
   const [cursor, setCursor] = useState(() => new Date());
   const [showAdd, setShowAdd] = useState(false);
@@ -529,9 +534,28 @@ export default function PlanPage() {
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
     useSensor(KeyboardSensor),
   );
+  const garminCompletedIds = useMemo(
+    () => getGarminCompletedSessionIds(garmin),
+    [garmin],
+  );
   const sessions = useMemo(
-    () => getCalendarSessions(programme, manualSessions, logs, overrides, lifecycle),
-    [lifecycle, logs, manualSessions, overrides, programme],
+    () =>
+      getCalendarSessions(
+        programme,
+        manualSessions,
+        logs,
+        overrides,
+        lifecycle,
+        garminCompletedIds,
+      ),
+    [
+      garminCompletedIds,
+      lifecycle,
+      logs,
+      manualSessions,
+      overrides,
+      programme,
+    ],
   );
   const displayedDays = useMemo(
     () => (view === "week" ? getWeekDays(cursor) : getMonthDays(cursor)),

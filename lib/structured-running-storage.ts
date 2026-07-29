@@ -63,12 +63,12 @@ export function getStructuredRunningWorkout(sessionId: string) {
   return readSnapshot()[sessionId] ?? null;
 }
 
+export function useStructuredRunningWorkouts() {
+  return useSyncExternalStore(subscribe, readSnapshot, () => EMPTY);
+}
+
 export function useStructuredRunningWorkout(sessionId: string) {
-  const workouts = useSyncExternalStore(
-    subscribe,
-    readSnapshot,
-    () => EMPTY,
-  );
+  const workouts = useStructuredRunningWorkouts();
   return workouts[sessionId] ?? null;
 }
 
@@ -94,4 +94,3 @@ export function updateStructuredRunningWorkoutDate(
     date,
   });
 }
-

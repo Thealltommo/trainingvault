@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeDailyRecovery,
   recoverySignalCount,
+  toAvailableGarminRecoveryPatch,
   toDailyRecoveryInput,
 } from "../lib/recovery-storage";
 
@@ -64,5 +65,24 @@ describe("local recovery normalization", () => {
     expect(input.recentLoad7d).toBe(420);
     expect(input.baselineLoad7d).toBe(350);
     expect(input.lowerBodyLoad48h).toBe(55);
+  });
+
+  it("does not let unavailable Garmin fields erase existing manual signals", () => {
+    const patch = toAvailableGarminRecoveryPatch({
+      date: "2026-08-05",
+      sleepHours: null,
+      hrvMs: null,
+      stressAverage: 0,
+      garminReadiness: 72,
+      garminSyncedAt: "2026-08-05T07:00:00.000Z",
+    });
+
+    expect(patch).not.toHaveProperty("sleepHours");
+    expect(patch).not.toHaveProperty("hrvMs");
+    expect(patch).toMatchObject({
+      stressAverage: 0,
+      garminReadiness: 72,
+      garminSyncedAt: "2026-08-05T07:00:00.000Z",
+    });
   });
 });

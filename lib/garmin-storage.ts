@@ -58,6 +58,7 @@ export type GarminLocalState = {
   workoutSync: Record<string, GarminWorkoutSyncRecord>;
   activities: GarminStoredActivity[];
   activityLinks: Record<string, GarminActivityLink>;
+  rejectedMatches: Record<string, string[]>;
   lastSyncedAt: string | null;
   nextActivityStart: number;
   lastSourceReturned: number;
@@ -85,11 +86,18 @@ export type GarminPlannedVsActual = {
   observations: string[];
 };
 
+export type GarminPostRunCoachInsight = {
+  title: string;
+  body: string;
+  confidence: string;
+};
+
 const EMPTY_STATE: GarminLocalState = {
   version: 1,
   workoutSync: {},
   activities: [],
   activityLinks: {},
+  rejectedMatches: {},
   lastSyncedAt: null,
   nextActivityStart: 0,
   lastSourceReturned: 0,
@@ -107,6 +115,37 @@ function canUseStorage() {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseRejectedMatches(value: unknown) {
+  if (!isObject(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .slice(0, MAX_STORED_ACTIVITIES)
+      .flatMap(([activityId, sessionIds]) => {
+        if (!activityId || !Array.isArray(sessionIds)) {
+          return [];
+        }
+
+        const validSessionIds = Array.from(
+          new Set(
+            sessionIds
+              .filter(
+                (sessionId): sessionId is string =>
+                  typeof sessionId === "string" && Boolean(sessionId),
+              )
+              .slice(0, 100),
+          ),
+        );
+
+        return validSessionIds.length > 0
+          ? [[activityId, validSessionIds] as const]
+          : [];
+      }),
+  );
 }
 
 function parseState(raw: string | null): GarminLocalState {
@@ -140,6 +179,7 @@ function parseState(raw: string | null): GarminLocalState {
       activityLinks: isObject(parsed.activityLinks)
         ? (parsed.activityLinks as Record<string, GarminActivityLink>)
         : {},
+      rejectedMatches: parseRejectedMatches(parsed.rejectedMatches),
       lastSyncedAt:
         typeof parsed.lastSyncedAt === "string" ? parsed.lastSyncedAt : null,
       nextActivityStart:
@@ -219,6 +259,18 @@ export function useGarminLocalState() {
   return useSyncExternalStore(subscribe, getStateSnapshot, () => EMPTY_STATE);
 }
 
+export function getGarminCompletedSessionIds(
+  state: GarminLocalState = getStateSnapshot(),
+) {
+  return Array.from(
+    new Set(
+      Object.values(state.activityLinks)
+        .map((link) => link?.sessionId)
+        .filter((sessionId): sessionId is string => Boolean(sessionId)),
+    ),
+  );
+}
+
 export function saveGarminWorkoutSync(record: GarminWorkoutSyncRecord) {
   const current = getStateSnapshot();
   writeState({
@@ -241,6 +293,11 @@ export function mergeGarminActivityBatch(input: {
     current.activities.map((record) => [record.activity.activityId, record]),
   );
   const activityLinks = { ...current.activityLinks };
+  const linkedSessionIds = new Set(
+    Object.values(activityLinks)
+      .map((link) => link?.sessionId)
+      .filter((sessionId): sessionId is string => Boolean(sessionId)),
+  );
   const automaticallyLinked: GarminActivityLink[] = [];
 
   for (const record of input.records) {
@@ -258,7 +315,11 @@ export function mergeGarminActivityBatch(input: {
 
     if (
       record.match.kind === "matched" &&
-      !activityLinks[activityId]
+      !activityLinks[activityId] &&
+      !linkedSessionIds.has(record.match.candidate.sessionId) &&
+      !current.rejectedMatches[activityId]?.includes(
+        record.match.candidate.sessionId,
+      )
     ) {
       const link: GarminActivityLink = {
         activityId,
@@ -267,6 +328,7 @@ export function mergeGarminActivityBatch(input: {
         linkedAt: input.syncedAt,
       };
       activityLinks[activityId] = link;
+      linkedSessionIds.add(link.sessionId);
       automaticallyLinked.push(link);
     }
   }
@@ -302,6 +364,52 @@ export function confirmGarminActivityMatch(
   }
 
   const current = getStateSnapshot();
+  const activityLinks = { ...current.activityLinks };
+  const rejectedMatches = Object.fromEntries(
+    Object.entries(current.rejectedMatches).map(([id, sessionIds]) => [
+      id,
+      [...sessionIds],
+    ]),
+  );
+  const rejectMatch = (rejectedActivityId: string, rejectedSessionId: string) => {
+    rejectedMatches[rejectedActivityId] = Array.from(
+      new Set([
+        ...(rejectedMatches[rejectedActivityId] ?? []),
+        rejectedSessionId,
+      ]),
+    );
+  };
+  const previousActivityLink = activityLinks[activityId];
+
+  if (
+    previousActivityLink &&
+    previousActivityLink.sessionId !== sessionId
+  ) {
+    rejectMatch(activityId, previousActivityLink.sessionId);
+  }
+
+  for (const [linkedActivityId, existingLink] of Object.entries(
+    activityLinks,
+  )) {
+    if (
+      linkedActivityId !== activityId &&
+      existingLink.sessionId === sessionId
+    ) {
+      rejectMatch(linkedActivityId, sessionId);
+      delete activityLinks[linkedActivityId];
+    }
+  }
+
+  const remainingRejections = (
+    rejectedMatches[activityId] ?? []
+  ).filter((rejectedSessionId) => rejectedSessionId !== sessionId);
+
+  if (remainingRejections.length > 0) {
+    rejectedMatches[activityId] = remainingRejections;
+  } else {
+    delete rejectedMatches[activityId];
+  }
+
   const link: GarminActivityLink = {
     activityId,
     sessionId,
@@ -312,9 +420,10 @@ export function confirmGarminActivityMatch(
   writeState({
     ...current,
     activityLinks: {
-      ...current.activityLinks,
+      ...activityLinks,
       [activityId]: link,
     },
+    rejectedMatches,
   });
 
   return link;
@@ -328,8 +437,21 @@ export function clearGarminActivityMatch(activityId: string) {
   }
 
   const activityLinks = { ...current.activityLinks };
+  const rejectedLink = activityLinks[activityId];
   delete activityLinks[activityId];
-  writeState({ ...current, activityLinks });
+  writeState({
+    ...current,
+    activityLinks,
+    rejectedMatches: {
+      ...current.rejectedMatches,
+      [activityId]: Array.from(
+        new Set([
+          ...(current.rejectedMatches[activityId] ?? []),
+          rejectedLink.sessionId,
+        ]),
+      ),
+    },
+  });
 }
 
 export function getKnownGarminActivityIds() {
@@ -503,5 +625,60 @@ export function analyseGarminPlannedVsActual(
     recordedLapCount,
     plannedIntervalCount,
     observations,
+  };
+}
+
+export function generateGarminPostRunCoachInsight(
+  comparison: GarminPlannedVsActual,
+): GarminPostRunCoachInsight {
+  const comparableFields = [
+    comparison.durationDeltaPercent,
+    comparison.distanceDeltaPercent,
+    comparison.paceDeltaSecondsPerKm,
+    comparison.heartRateAssessment,
+    comparison.elevationDeltaMeters,
+    comparison.recordedLapCount !== null &&
+    comparison.plannedIntervalCount !== null
+      ? comparison.recordedLapCount
+      : null,
+  ].filter((value) => value !== null).length;
+  const confidence = `Basic · ${comparableFields} comparable field${
+    comparableFields === 1 ? "" : "s"
+  }`;
+
+  if (comparison.adherence === "partial") {
+    return {
+      title: "Volume landed below plan",
+      body: "The matched run completed materially less volume than prescribed. Add RPE and context before adapting the week; do not automatically make up the missing load.",
+      confidence,
+    };
+  }
+
+  if (comparison.adherence === "over") {
+    return {
+      title: "Count the extra running cost",
+      body: "The matched run materially exceeded prescribed volume. Treat that additional work as training load before the next lower-body or quality session.",
+      confidence,
+    };
+  }
+
+  if (comparison.adherence === "on_target") {
+    const heartRateContext =
+      comparison.heartRateAssessment &&
+      comparison.heartRateAssessment !== "Within target range"
+        ? ` Average heart rate was ${comparison.heartRateAssessment.toLowerCase()}.`
+        : "";
+
+    return {
+      title: "Prescription substantially completed",
+      body: `Completed volume was close to plan.${heartRateContext} Add RPE so TrainVault can pair the Garmin response with subjective cost.`,
+      confidence,
+    };
+  }
+
+  return {
+    title: "Matched, with limited comparable data",
+    body: "The activity is linked, but planned and actual fields are too sparse for a volume conclusion. Add RPE and notes; no automatic load adjustment has been inferred.",
+    confidence,
   };
 }

@@ -591,8 +591,12 @@ export function getCalendarSessions(
   logs: SessionLog[],
   overrides: Record<string, WorkoutOverride>,
   lifecycle: Record<string, SessionLifecycleOverride>,
+  externalCompletedIds: Iterable<string> = [],
 ) {
-  const completedIds = new Set(logs.map((log) => log.workoutId));
+  const completedIds = new Set([
+    ...logs.map((log) => log.workoutId),
+    ...externalCompletedIds,
+  ]);
   const programmeSessions: CalendarSession[] = [];
 
   programme?.weeks.forEach((week, weekIndex) => {

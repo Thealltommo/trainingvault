@@ -14,6 +14,7 @@ import {
 } from "@/lib/garmin-server";
 import {
   analyseGarminPlannedVsActual,
+  generateGarminPostRunCoachInsight,
   type GarminPlannedSession,
   type NormalizedGarminActivity,
 } from "@/lib/garmin-storage";
@@ -287,5 +288,9 @@ describe("Garmin planned versus actual", () => {
     expect(result.observations.at(-1)).toBe(
       "Add subjective RPE in the TrainVault session log.",
     );
+    expect(generateGarminPostRunCoachInsight(result)).toMatchObject({
+      title: "Prescription substantially completed",
+      confidence: "Basic · 6 comparable fields",
+    });
   });
 });

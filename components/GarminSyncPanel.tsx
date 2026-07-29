@@ -14,6 +14,7 @@ import {
   analyseGarminPlannedVsActual,
   clearGarminActivityMatch,
   confirmGarminActivityMatch,
+  generateGarminPostRunCoachInsight,
   getKnownGarminActivityIds,
   mergeGarminActivityBatch,
   useGarminLocalState,
@@ -134,6 +135,12 @@ function formatPace(secondsPerKm: number | null) {
   return `${minutes}:${String(seconds).padStart(2, "0")}/km`;
 }
 
+function isRunningActivityType(activityType: string | null) {
+  const normalized =
+    activityType?.toLowerCase().replaceAll("-", "_") ?? "";
+  return normalized.includes("run") || normalized.includes("jog");
+}
+
 function comparisonTone(adherence: GarminPlannedVsActual["adherence"]) {
   if (adherence === "on_target") {
     return "border-[var(--accent)] text-[var(--accent)]";
@@ -154,6 +161,7 @@ function PlannedActual({
   activity: NormalizedGarminActivity;
 }) {
   const result = analyseGarminPlannedVsActual(session, activity);
+  const coachInsight = generateGarminPostRunCoachInsight(result);
 
   return (
     <div className="mt-3 rounded-md border border-[rgba(215,255,47,0.28)] bg-black/65 p-3">
@@ -213,6 +221,18 @@ function PlannedActual({
           </li>
         ))}
       </ul>
+      <div className="mt-3 border-l-2 border-[var(--accent)] bg-[rgba(215,255,47,0.06)] p-3">
+        <p className="tv-label text-[var(--accent)]">Post-run Coach insight</p>
+        <p className="mt-1 text-sm font-black uppercase">
+          {coachInsight.title}
+        </p>
+        <p className="mt-1 text-xs font-bold text-[var(--muted)]">
+          {coachInsight.body}
+        </p>
+        <p className="mt-2 text-[0.65rem] font-black uppercase text-[var(--muted)]">
+          Confidence: {coachInsight.confidence}
+        </p>
+      </div>
     </div>
   );
 }
@@ -225,6 +245,10 @@ export default function GarminSyncPanel({
   const [syncing, setSyncing] = useState<"latest" | "older" | null>(null);
   const [syncError, setSyncError] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
+  const [visibleActivityCount, setVisibleActivityCount] = useState(12);
+  const [manualSelections, setManualSelections] = useState<
+    Record<string, string>
+  >({});
   const sessionsForMatching = plannedSessions.map((session) => ({
     ...session,
     garminWorkoutId:
@@ -235,6 +259,12 @@ export default function GarminSyncPanel({
 
   const plannedById = new Map(
     sessionsForMatching.map((session) => [session.sessionId, session]),
+  );
+  const linkedSessionIds = new Set(
+    Object.values(garmin.activityLinks).map((link) => link.sessionId),
+  );
+  const availableSessionsForMatching = sessionsForMatching.filter(
+    (session) => !linkedSessionIds.has(session.sessionId),
   );
 
   function notifyLinked(
@@ -272,7 +302,7 @@ export default function GarminSyncPanel({
           start: mode === "latest" ? 0 : garmin.nextActivityStart,
           limit: 30,
           knownActivityIds: getKnownGarminActivityIds(),
-          plannedSessions: sessionsForMatching,
+          plannedSessions: availableSessionsForMatching,
         }),
       });
       const value = (await response.json()) as unknown;
@@ -290,6 +320,13 @@ export default function GarminSyncPanel({
       }
 
       const automaticallyLinked = mergeGarminActivityBatch(parsed);
+
+      if (mode === "older") {
+        setVisibleActivityCount(
+          (current) =>
+            current + Math.max(12, parsed.records.length),
+        );
+      }
 
       for (const link of automaticallyLinked) {
         const record = parsed.records.find(
@@ -344,6 +381,11 @@ export default function GarminSyncPanel({
 
     if (link) {
       notifyLinked(link, record.activity);
+      setManualSelections((current) => {
+        const next = { ...current };
+        delete next[activityId];
+        return next;
+      });
     }
   }
 
@@ -435,7 +477,9 @@ export default function GarminSyncPanel({
             </p>
           </div>
         ) : (
-          garmin.activities.slice(0, 12).map((record) => {
+          garmin.activities
+            .slice(0, visibleActivityCount)
+            .map((record) => {
             const activityId = record.activity.activityId;
             const link = activityId
               ? garmin.activityLinks[activityId]
@@ -443,13 +487,27 @@ export default function GarminSyncPanel({
             const linkedSession = link
               ? plannedById.get(link.sessionId)
               : undefined;
+            const rejectedSessionIds = new Set(
+              activityId
+                ? garmin.rejectedMatches[activityId] ?? []
+                : [],
+            );
             const candidates =
-              record.match.kind === "ambiguous"
+              record.match.kind === "ambiguous" ||
+              record.match.kind === "matched"
                 ? [
                     record.match.candidate,
                     ...record.match.alternatives,
-                  ]
+                  ].filter(
+                    (candidate) =>
+                      !rejectedSessionIds.has(candidate.sessionId),
+                  )
                 : [];
+            const manualOptions = isRunningActivityType(
+              record.activity.activityType,
+            )
+              ? availableSessionsForMatching
+              : [];
 
             return (
               <article
@@ -503,14 +561,15 @@ export default function GarminSyncPanel({
                   </div>
                 </div>
 
-                {!link && record.match.kind === "ambiguous" ? (
+                {!link && candidates.length > 0 ? (
                   <div className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3">
                     <p className="text-sm font-black uppercase text-amber-200">
                       Match this activity?
                     </p>
                     <p className="mt-1 text-xs font-bold text-amber-100/75">
-                      More than one plan match is plausible. Nothing has been
-                      completed automatically.
+                      {record.match.kind === "ambiguous"
+                        ? "More than one plan match is plausible. Nothing has been completed automatically."
+                        : "A previous automatic match was rejected or displaced. Confirm the correct planned run."}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {candidates.map((candidate) => {
@@ -542,6 +601,52 @@ export default function GarminSyncPanel({
                   </p>
                 ) : null}
 
+                {!link && activityId && manualOptions.length > 0 ? (
+                  <div className="mt-3 grid gap-2 rounded-md border border-[var(--border)] bg-black/55 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <label className="grid gap-2">
+                      <span className="tv-label">
+                        Choose a different planned run
+                      </span>
+                      <select
+                        className="tv-input"
+                        value={manualSelections[activityId] ?? ""}
+                        onChange={(event) =>
+                          setManualSelections((current) => ({
+                            ...current,
+                            [activityId]: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Select a session</option>
+                        {manualOptions.map((session) => (
+                          <option
+                            key={session.sessionId}
+                            value={session.sessionId}
+                          >
+                            {session.date} · {session.title}
+                            {rejectedSessionIds.has(session.sessionId)
+                              ? " · previously unlinked"
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!manualSelections[activityId]}
+                      onClick={() => {
+                        const sessionId = manualSelections[activityId];
+                        if (sessionId) {
+                          handleConfirm(record, sessionId);
+                        }
+                      }}
+                      className="tv-button-ghost min-h-11 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Match activity
+                    </button>
+                  </div>
+                ) : null}
+
                 {link && linkedSession ? (
                   <>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -555,7 +660,7 @@ export default function GarminSyncPanel({
                             ? clearGarminActivityMatch(activityId)
                             : undefined
                         }
-                        className="inline-flex items-center gap-1 text-xs font-black uppercase text-[var(--muted)] hover:text-[var(--text)]"
+                        className="inline-flex min-h-11 items-center gap-1 px-2 text-xs font-black uppercase text-[var(--muted)] hover:text-[var(--text)]"
                       >
                         <Unlink className="h-3.5 w-3.5" aria-hidden="true" />
                         Unlink
@@ -572,6 +677,18 @@ export default function GarminSyncPanel({
           })
         )}
       </div>
+
+      {garmin.activities.length > visibleActivityCount ? (
+        <button
+          type="button"
+          onClick={() =>
+            setVisibleActivityCount((current) => current + 12)
+          }
+          className="tv-button-ghost mt-3"
+        >
+          Show more imported activities
+        </button>
+      ) : null}
     </section>
   );
 }

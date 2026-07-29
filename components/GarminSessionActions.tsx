@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -30,6 +30,7 @@ type GarminSessionActionsProps = {
   sessionId: string;
   scheduledDate?: string | null;
   structuredWorkout?: StructuredRunningWorkout | null;
+  prescriptionMatchesStructuredWorkout?: boolean;
 };
 
 const stateLabels: Record<GarminSyncState, string> = {
@@ -39,6 +40,7 @@ const stateLabels: Record<GarminSyncState, string> = {
   sent_to_device: "Sent to device",
   error: "Error",
 };
+const STALE_SYNC_AFTER_MS = 2 * 60 * 1_000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,12 +117,21 @@ export default function GarminSessionActions({
   sessionId,
   scheduledDate,
   structuredWorkout,
+  prescriptionMatchesStructuredWorkout = true,
 }: GarminSessionActionsProps) {
   const garmin = useGarminLocalState();
   const storedRecord = garmin.workoutSync[sessionId];
   const record =
     storedRecord?.scheduledDate === scheduledDate ? storedRecord : undefined;
-  const state: GarminSyncState = record?.state ?? "not_sent";
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+  const recordUpdatedAt = record ? Date.parse(record.updatedAt) : Number.NaN;
+  const staleSyncing =
+    record?.state === "syncing" &&
+    (!Number.isFinite(recordUpdatedAt) ||
+      currentTime - recordUpdatedAt >= STALE_SYNC_AFTER_MS);
+  const state: GarminSyncState = staleSyncing
+    ? "error"
+    : record?.state ?? "not_sent";
   const [pushToDevice, setPushToDevice] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [devices, setDevices] = useState<GarminDevice[]>([]);
@@ -131,12 +142,33 @@ export default function GarminSessionActions({
   const canSend =
     Boolean(scheduledDate) &&
     hasPrescription &&
+    prescriptionMatchesStructuredWorkout &&
     state !== "syncing" &&
     !(
       state === "sent_to_device" &&
       record?.scheduledDate === scheduledDate
     ) &&
     !(state === "scheduled" && !pushToDevice);
+
+  useEffect(() => {
+    if (
+      record?.state !== "syncing" ||
+      !Number.isFinite(recordUpdatedAt)
+    ) {
+      return;
+    }
+
+    const remaining = Math.max(
+      0,
+      recordUpdatedAt + STALE_SYNC_AFTER_MS - Date.now(),
+    );
+    const timeoutId = window.setTimeout(
+      () => setCurrentTime(Date.now()),
+      remaining + 50,
+    );
+
+    return () => window.clearTimeout(timeoutId);
+  }, [record?.state, record?.updatedAt, recordUpdatedAt]);
 
   async function loadDevices() {
     if (devicesLoading || devices.length > 0) {
@@ -303,6 +335,19 @@ export default function GarminSessionActions({
         </p>
       )}
 
+      {hasPrescription && !prescriptionMatchesStructuredWorkout ? (
+        <p
+          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
+          role="alert"
+        >
+          The selected prescription differs from these structured Garmin
+          steps. TrainVault will not send the unchanged full workout. Return
+          to FULL, or create a separately structured reduced run. A workout
+          already scheduled in Garmin is not automatically rewritten or
+          cancelled.
+        </p>
+      ) : null}
+
       <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 rounded-md border border-[var(--border)] bg-black px-3 text-sm font-black uppercase">
         <input
           type="checkbox"
@@ -369,6 +414,17 @@ export default function GarminSessionActions({
               The captured Garmin workout ID is retained for a safe retry.
             </span>
           ) : null}
+        </p>
+      ) : null}
+
+      {staleSyncing ? (
+        <p
+          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
+          role="alert"
+        >
+          The previous Garmin request was interrupted before TrainVault
+          received a final result. Retry is available; any captured Garmin IDs
+          will be reused.
         </p>
       ) : null}
 

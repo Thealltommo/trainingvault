@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarDays, Check, CheckCircle, Clock, Gauge, Pencil, Pin, RotateCcw } from "lucide-react";
 import HeroImagePanel from "@/components/HeroImagePanel";
+import GarminSessionActions from "@/components/GarminSessionActions";
 import SessionCompleteForm from "@/components/SessionCompleteForm";
 import StructuredRunningPrescription from "@/components/StructuredRunningPrescription";
 import SessionVariantPanel from "@/components/SessionVariantPanel";
@@ -14,6 +15,11 @@ import WorkoutScalePanel from "@/components/WorkoutScalePanel";
 import { getHeroImageForWorkout } from "@/lib/hero-images";
 import { normalizeLimiter } from "@/lib/session-log";
 import { useManualSessions } from "@/lib/planning-storage";
+import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
+import { useStructuredRunningWorkout } from "@/lib/structured-running-storage";
 import {
   applyWorkoutOverride,
   deleteWorkoutOverride,
@@ -271,6 +277,7 @@ export default function SessionPage() {
   const logs = useSessionLogs();
   const selectedTodayWorkoutId = useTodayWorkoutOverride();
   const workoutOverrides = useWorkoutOverrides();
+  const garmin = useGarminLocalState();
   const [showMobileLogCta, setShowMobileLogCta] = useState(true);
   const [openResultBlocks, setOpenResultBlocks] = useState<Record<string, boolean>>({});
   const [editPanelOpen, setEditPanelOpen] = useState(false);
@@ -285,9 +292,13 @@ export default function SessionPage() {
     return programmeWorkout ?? manualWorkout;
   }, [manualSessions, params.id, programme]);
   const workoutOverride = sourceWorkout ? workoutOverrides[sourceWorkout.id] ?? null : null;
+  const manualSession = manualSessions.find(
+    (candidate) => candidate.id === params.id,
+  );
   const workout = useMemo(() => {
     return sourceWorkout ? applyWorkoutOverride(sourceWorkout, workoutOverride) : null;
   }, [sourceWorkout, workoutOverride]);
+  const structuredRunningWorkout = useStructuredRunningWorkout(workout?.id ?? "");
   const blockProgress = useWorkoutBlockProgress(workout?.id ?? "");
   const savedBlockResults = useWorkoutBlockResults(workout?.id ?? "");
 
@@ -350,9 +361,27 @@ export default function SessionPage() {
   const originalWorkout = sourceWorkout;
   const workoutId = workout.id;
   const substitutions = workout.substitutions ?? workout.alternatives ?? [];
-  const isCompleted = attempts.length > 0;
+  const garminCompletedIds = getGarminCompletedSessionIds(garmin);
+  const completedFromGarmin = garminCompletedIds.includes(workout.id);
+  const isCompleted = attempts.length > 0 || completedFromGarmin;
   const isSelectedToday = selectedTodayWorkoutId === workout.id;
   const isMoved = (workout.date ?? "") !== (originalWorkout.date ?? "");
+  const structuredDurationMinutes =
+    structuredRunningWorkout?.estimatedDurationSeconds == null
+      ? null
+      : structuredRunningWorkout.estimatedDurationSeconds / 60;
+  const hasStructuredPrescriptionOverride =
+    manualSession?.selectedVariant !== undefined &&
+    manualSession.selectedVariant !== "full"
+      ? true
+      : workoutOverride?.durationMinutes !== undefined ||
+        workoutOverride?.blocks !== undefined ||
+        workoutOverride?.prescribedLoadsOrPace !== undefined;
+  const structuredDurationMatches =
+    structuredDurationMinutes === null ||
+    Math.abs(structuredDurationMinutes - workout.durationMinutes) <= 1;
+  const prescriptionMatchesStructuredWorkout =
+    !hasStructuredPrescriptionOverride && structuredDurationMatches;
   const sessionHeroSrc = getHeroImageForWorkout(workout);
   const handstandGuide = programme?.handstandGuide ?? [];
   const meaningfulHandstandGuide = handstandGuide.filter(isMeaningfulGuideItem);
@@ -521,6 +550,17 @@ export default function SessionPage() {
       ) : null}
 
       <StructuredRunningPrescription sessionId={workout.id} />
+
+      <div id="garmin" className="scroll-mt-4">
+        <GarminSessionActions
+          sessionId={workout.id}
+          scheduledDate={workout.date ?? structuredRunningWorkout?.date}
+          structuredWorkout={structuredRunningWorkout}
+          prescriptionMatchesStructuredWorkout={
+            prescriptionMatchesStructuredWorkout
+          }
+        />
+      </div>
 
       <SessionVariantPanel
         workout={workout}
@@ -811,7 +851,11 @@ export default function SessionPage() {
             })}
           </div>
         ) : (
-          <p className="mt-3 text-sm font-bold text-[var(--muted)]">No attempts logged yet. The form below can be used now and again later.</p>
+          <p className="mt-3 text-sm font-bold text-[var(--muted)]">
+            {completedFromGarmin
+              ? "Garmin matched this session as completed. Add subjective RPE and notes below to finish the athlete record."
+              : "No attempts logged yet. The form below can be used now and again later."}
+          </p>
         )}
       </section>
 

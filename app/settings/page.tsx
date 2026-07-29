@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  CalendarDays,
   CloudUpload,
   Database,
   FileJson,
@@ -253,7 +254,14 @@ export default function SettingsPage() {
         ) : null}
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Link href="/settings/events" className="tv-card tv-card-hover p-4">
+          <CalendarDays className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
+          <h2 className="mt-3 text-xl font-black uppercase">Events and priorities</h2>
+          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+            Maintain A, B, and C events, targets, terrain, and taper intent.
+          </p>
+        </Link>
         <Link href="/admin/import" className="tv-card tv-card-hover p-4">
           <FileJson className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
           <h2 className="mt-3 text-xl font-black uppercase">Import / export JSON</h2>

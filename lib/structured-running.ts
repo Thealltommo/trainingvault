@@ -232,3 +232,94 @@ export function describeRunningStep(
   return `${step.phase}: ${duration}${target}`;
 }
 
+export function getStructuredRunningMetrics(
+  workout: StructuredRunningWorkout,
+) {
+  let distanceMeters = 0;
+  let hasStep = false;
+  let hasCompleteDistanceEstimate = true;
+  let allStepsUseHeartRate = true;
+  let minimumHeartRate = Number.POSITIVE_INFINITY;
+  let maximumHeartRate = Number.NEGATIVE_INFINITY;
+  let plannedIntervalCount = 0;
+
+  const includeStep = (
+    step: Extract<StructuredRunningElement, { kind: "step" }>,
+    multiplier: number,
+  ) => {
+    hasStep = true;
+
+    if (step.target.type === "heart_rate") {
+      minimumHeartRate = Math.min(
+        minimumHeartRate,
+        step.target.minimumBpm,
+      );
+      maximumHeartRate = Math.max(
+        maximumHeartRate,
+        step.target.maximumBpm,
+      );
+    } else {
+      allStepsUseHeartRate = false;
+    }
+
+    if (step.duration.type === "distance") {
+      distanceMeters += step.duration.meters * multiplier;
+      return;
+    }
+
+    if (
+      step.duration.type === "time" &&
+      step.target.type === "pace"
+    ) {
+      const averagePace =
+        (step.target.fastestSecondsPerKm +
+          step.target.slowestSecondsPerKm) /
+        2;
+      distanceMeters +=
+        (step.duration.seconds / averagePace) * 1_000 * multiplier;
+      return;
+    }
+
+    hasCompleteDistanceEstimate = false;
+  };
+
+  workout.steps.forEach((element) => {
+    if (element.kind === "step") {
+      includeStep(element, 1);
+      return;
+    }
+
+    plannedIntervalCount += element.repetitions;
+    element.steps.forEach((step) =>
+      includeStep(step, element.repetitions),
+    );
+  });
+
+  const plannedDurationSeconds = workout.estimatedDurationSeconds ?? null;
+  const plannedDistanceMeters =
+    hasStep && hasCompleteDistanceEstimate
+      ? Math.round(distanceMeters)
+      : null;
+  const plannedPaceSecondsPerKm =
+    plannedDurationSeconds !== null &&
+    plannedDistanceMeters !== null &&
+    distanceMeters > 0
+      ? plannedDurationSeconds / (distanceMeters / 1_000)
+      : null;
+  const plannedHeartRateRange: [number, number] | null =
+    hasStep &&
+    allStepsUseHeartRate &&
+    Number.isFinite(minimumHeartRate) &&
+    Number.isFinite(maximumHeartRate)
+      ? [minimumHeartRate, maximumHeartRate]
+      : null;
+
+  return {
+    plannedDistanceMeters,
+    plannedDurationSeconds,
+    plannedPaceSecondsPerKm,
+    plannedHeartRateRange,
+    plannedIntervalCount:
+      plannedIntervalCount > 0 ? plannedIntervalCount : null,
+  };
+}

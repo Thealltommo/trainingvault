@@ -360,13 +360,26 @@ export function saveDailyCheckIn(input: DailyCheckInInput) {
   return saveRecoveryPatch(input.date, input, "manual");
 }
 
+export function toAvailableGarminRecoveryPatch(
+  input: GarminRecoveryInput,
+): Partial<DailyRecoveryRecord> {
+  const availableValues = Object.fromEntries(
+    Object.entries(input).filter(
+      ([key, value]) =>
+        key !== "date" && value !== null && value !== undefined,
+    ),
+  ) as Partial<DailyRecoveryRecord>;
+
+  return {
+    ...availableValues,
+    garminSyncedAt: input.garminSyncedAt ?? new Date().toISOString(),
+  };
+}
+
 export function saveGarminRecovery(input: GarminRecoveryInput) {
   return saveRecoveryPatch(
     input.date,
-    {
-      ...input,
-      garminSyncedAt: input.garminSyncedAt ?? new Date().toISOString(),
-    },
+    toAvailableGarminRecoveryPatch(input),
     "garmin",
   );
 }

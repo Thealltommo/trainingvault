@@ -18,6 +18,7 @@ import {
   Gauge,
   Mountain,
   Timer,
+  Trophy,
 } from "lucide-react";
 import {
   getCalendarSessions,
@@ -25,6 +26,10 @@ import {
   useSessionLifecycleOverrides,
   type CalendarSession,
 } from "@/lib/planning-storage";
+import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
 import {
   useActiveProgrammeOptional,
   useSessionLogs,
@@ -38,6 +43,12 @@ type WeeklyPoint = {
   planned: number;
   actual: number;
   completed: number;
+};
+
+type ExternalCompletion = {
+  sessionId: string;
+  completedAt: string;
+  durationMinutes: number;
 };
 
 function localDateKey(date: Date) {
@@ -62,6 +73,7 @@ function weekKey(value: Date) {
 function buildWeeklySeries(
   sessions: CalendarSession[],
   logs: SessionLog[],
+  externalCompletions: ExternalCompletion[] = [],
   now = new Date(),
 ): WeeklyPoint[] {
   const points = Array.from({ length: 8 }, (_, reverseIndex) => {
@@ -93,6 +105,26 @@ function buildWeeklySeries(
     if (point) {
       point.actual += log.actualDurationMinutes ?? 0;
       point.completed += 1;
+    }
+  });
+
+  const loggedSessionIds = new Set(logs.map((log) => log.workoutId));
+  const sessionsWithLoggedDuration = new Set(
+    logs
+      .filter((log) => log.actualDurationMinutes != null)
+      .map((log) => log.workoutId),
+  );
+
+  externalCompletions.forEach((completion) => {
+    const point = pointByKey.get(weekKey(new Date(completion.completedAt)));
+
+    if (point) {
+      if (!sessionsWithLoggedDuration.has(completion.sessionId)) {
+        point.actual += completion.durationMinutes;
+      }
+      if (!loggedSessionIds.has(completion.sessionId)) {
+        point.completed += 1;
+      }
     }
   });
 
@@ -207,6 +239,11 @@ export default function InsightsPage() {
   const lifecycle = useSessionLifecycleOverrides();
   const logs = useSessionLogs();
   const overrides = useWorkoutOverrides();
+  const garmin = useGarminLocalState();
+  const garminCompletedIds = useMemo(
+    () => getGarminCompletedSessionIds(garmin),
+    [garmin],
+  );
   const sessions = useMemo(
     () =>
       getCalendarSessions(
@@ -215,19 +252,72 @@ export default function InsightsPage() {
         logs,
         overrides,
         lifecycle,
+        garminCompletedIds,
       ),
-    [lifecycle, logs, manualSessions, overrides, programme],
+    [
+      garminCompletedIds,
+      lifecycle,
+      logs,
+      manualSessions,
+      overrides,
+      programme,
+    ],
   );
+  const externalCompletions = useMemo(() => {
+    const activityById = new Map(
+      garmin.activities.map((record) => [
+        record.activity.activityId,
+        record.activity,
+      ]),
+    );
+
+    const completionsBySession = new Map<string, ExternalCompletion>();
+
+    Object.values(garmin.activityLinks).forEach((link) => {
+        const activity = activityById.get(link.activityId);
+        const completedAt =
+          activity?.startTime ?? activity?.localStartTime ?? null;
+
+        if (
+          !activity ||
+          !completedAt
+        ) {
+          return;
+        }
+
+        const candidate = {
+          sessionId: link.sessionId,
+          completedAt,
+          durationMinutes:
+            activity.durationSeconds === null
+              ? 0
+              : activity.durationSeconds / 60,
+        };
+        const existing = completionsBySession.get(link.sessionId);
+
+        if (
+          !existing ||
+          Date.parse(candidate.completedAt) > Date.parse(existing.completedAt)
+        ) {
+          completionsBySession.set(link.sessionId, candidate);
+        }
+      });
+
+    return Array.from(completionsBySession.values());
+  }, [garmin.activities, garmin.activityLinks]);
   const weekly = useMemo(
-    () => buildWeeklySeries(sessions, logs),
-    [logs, sessions],
+    () => buildWeeklySeries(sessions, logs, externalCompletions),
+    [externalCompletions, logs, sessions],
   );
   const insights = useMemo(
     () => getActionableInsights(sessions, logs),
     [logs, sessions],
   );
   const datedSessions = sessions.filter((session) => session.scheduledDate);
-  const completedIds = new Set(logs.map((log) => log.workoutId));
+  const completedIds = new Set([
+    ...logs.map((log) => log.workoutId),
+    ...garminCompletedIds,
+  ]);
   const dueSessions = datedSessions.filter(
     (session) =>
       session.scheduledDate <= localDateKey(new Date()) &&
@@ -241,9 +331,23 @@ export default function InsightsPage() {
             100,
         )
       : 0;
-  const actualMinutes = logs.reduce(
-    (total, log) => total + (log.actualDurationMinutes ?? 0),
-    0,
+  const sessionsWithLoggedDuration = new Set(
+    logs
+      .filter((log) => log.actualDurationMinutes != null)
+      .map((log) => log.workoutId),
+  );
+  const actualMinutes = Math.round(
+    logs.reduce(
+      (total, log) => total + (log.actualDurationMinutes ?? 0),
+      externalCompletions.reduce(
+        (total, completion) =>
+          total +
+          (sessionsWithLoggedDuration.has(completion.sessionId)
+            ? 0
+            : completion.durationMinutes),
+        0,
+      ),
+    ),
   );
   const averageRpe = average(logs.map((log) => log.rpe));
   const runningSessions = sessions.filter((session) =>
@@ -320,7 +424,12 @@ export default function InsightsPage() {
           </span>
         </div>
         <div className="mt-4 h-72 min-w-0">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            minWidth={0}
+            initialDimension={{ width: 960, height: 288 }}
+          >
             <AreaChart data={weekly} margin={{ left: -18, right: 4 }}>
               <defs>
                 <linearGradient id="planned-fill" x1="0" y1="0" x2="0" y2="1">
@@ -365,10 +474,16 @@ export default function InsightsPage() {
         ))}
       </section>
 
-      <Link href="/progress" className="tv-button-ghost w-fit">
-        Open legacy detail charts
-        <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-      </Link>
+      <section className="flex flex-wrap gap-3">
+        <Link href="/insights/records" className="tv-button-primary">
+          <Trophy className="h-4 w-4" aria-hidden="true" />
+          Personal records
+        </Link>
+        <Link href="/progress" className="tv-button-ghost">
+          Open legacy detail charts
+          <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
+      </section>
     </div>
   );
 }

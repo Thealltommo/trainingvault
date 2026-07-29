@@ -17,6 +17,10 @@ import type {
   CoachRequest,
 } from "@/lib/coach-schema";
 import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
+import {
   getCalendarSessions,
   rescheduleCalendarSession,
   selectCalendarSessionVariant,
@@ -67,6 +71,7 @@ export default function CoachPage() {
   const lifecycle = useSessionLifecycleOverrides();
   const logs = useSessionLogs();
   const overrides = useWorkoutOverrides();
+  const garmin = useGarminLocalState();
   const now = useNow();
   const [message, setMessage] = useState("");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
@@ -76,6 +81,10 @@ export default function CoachPage() {
     () => new Set(),
   );
   const today = localDateKey(new Date(now || 0));
+  const garminCompletedIds = useMemo(
+    () => getGarminCompletedSessionIds(garmin),
+    [garmin],
+  );
   const sessions = useMemo(
     () =>
       getCalendarSessions(
@@ -84,8 +93,16 @@ export default function CoachPage() {
         logs,
         overrides,
         lifecycle,
+        garminCompletedIds,
       ),
-    [programme, manualSessions, logs, overrides, lifecycle],
+    [
+      garminCompletedIds,
+      programme,
+      manualSessions,
+      logs,
+      overrides,
+      lifecycle,
+    ],
   );
 
   function buildRequest(question: string): CoachRequest {
@@ -537,4 +554,3 @@ export default function CoachPage() {
     </div>
   );
 }
-

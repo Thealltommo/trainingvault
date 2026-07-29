@@ -17,6 +17,7 @@ import {
   Watch,
 } from "lucide-react";
 import WorkoutCard from "@/components/WorkoutCard";
+import GarminRecoverySync from "@/components/GarminRecoverySync";
 import {
   assessDailyReadiness,
   classifySessionLoad,
@@ -41,6 +42,10 @@ import {
   type DailyRecoveryRecord,
 } from "@/lib/recovery-storage";
 import { normalizeLimiter } from "@/lib/session-log";
+import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
 import {
   useActiveProgrammeOptional,
   useClientReady,
@@ -632,11 +637,16 @@ export default function Home() {
   const lifecycle = useSessionLifecycleOverrides();
   const logs = useSessionLogs();
   const workoutOverrides = useWorkoutOverrides();
+  const garmin = useGarminLocalState();
   const todayOverride = useTodayWorkoutOverride();
   const now = useNow();
   const clientReady = useClientReady();
   const todayKey = now ? localDateKey(new Date(now)) : "";
   const recovery = useDailyRecovery(todayKey);
+  const garminCompletedIds = useMemo(
+    () => getGarminCompletedSessionIds(garmin),
+    [garmin],
+  );
   const sessions = useMemo(
     () =>
       getCalendarSessions(
@@ -645,8 +655,16 @@ export default function Home() {
         logs,
         workoutOverrides,
         lifecycle,
+        garminCompletedIds,
       ),
-    [lifecycle, logs, manualSessions, programme, workoutOverrides],
+    [
+      garminCompletedIds,
+      lifecycle,
+      logs,
+      manualSessions,
+      programme,
+      workoutOverrides,
+    ],
   );
   const trainingSignals = useMemo(
     () => deriveTrainingSignals(logs, sessions, now),
@@ -1080,6 +1098,8 @@ export default function Home() {
             date={todayKey}
             record={recovery}
           />
+
+          <GarminRecoverySync date={todayKey} />
 
           {readiness ? (
             <p className="mt-4 text-[0.65rem] font-bold text-[var(--muted)]">

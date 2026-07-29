@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildStructuredRunningWorkout,
   describeStructuredRunningWorkout,
+  getStructuredRunningMetrics,
   parsePaceSecondsPerKm,
 } from "@/lib/structured-running";
 import { toGarminRunningWorkoutRequest } from "@/lib/garmin/workout-converter";
@@ -37,6 +38,12 @@ describe("structured running prescriptions", () => {
       "work: 30 min @ 5:30/km–6:00/km",
     );
     expect(toGarminRunningWorkoutRequest(workout).steps).toEqual(workout.steps);
+    expect(getStructuredRunningMetrics(workout)).toMatchObject({
+      plannedDistanceMeters: null,
+      plannedDurationSeconds: 2_700,
+      plannedPaceSecondsPerKm: null,
+      plannedIntervalCount: null,
+    });
   });
 
   it("builds explicit 6 x 800 m work and recovery steps", () => {
@@ -77,6 +84,33 @@ describe("structured running prescriptions", () => {
       ],
     });
     expect(() => toGarminRunningWorkoutRequest(workout)).not.toThrow();
+    expect(getStructuredRunningMetrics(workout)).toMatchObject({
+      plannedDistanceMeters: null,
+      plannedIntervalCount: 6,
+      plannedPaceSecondsPerKm: null,
+    });
+  });
+
+  it("only reports whole-activity pace and distance when every step is estimable", () => {
+    const workout = buildStructuredRunningWorkout({
+      id: "continuous",
+      name: "Continuous pace run",
+      date: "2026-08-06",
+      mode: "continuous",
+      warmupMinutes: 0,
+      continuousMinutes: 30,
+      cooldownMinutes: 0,
+      repetitions: 0,
+      workDistanceMeters: 0,
+      recoverySeconds: 0,
+      fastestPace: "5:30",
+      slowestPace: "6:00",
+    });
+
+    expect(getStructuredRunningMetrics(workout)).toMatchObject({
+      plannedDistanceMeters: 5_217,
+      plannedDurationSeconds: 1_800,
+      plannedPaceSecondsPerKm: 345,
+    });
   });
 });
-

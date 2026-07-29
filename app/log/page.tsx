@@ -3,7 +3,19 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CirclePlus, Trash2 } from "lucide-react";
+import GarminSyncPanel from "@/components/GarminSyncPanel";
+import {
+  getCalendarSessions,
+  useManualSessions,
+  useSessionLifecycleOverrides,
+} from "@/lib/planning-storage";
+import {
+  getGarminCompletedSessionIds,
+  useGarminLocalState,
+} from "@/lib/garmin-storage";
 import { normalizeLimiter } from "@/lib/session-log";
+import { getStructuredRunningMetrics } from "@/lib/structured-running";
+import { useStructuredRunningWorkouts } from "@/lib/structured-running-storage";
 import {
   deleteSessionLog,
   getAllWorkouts,
@@ -66,8 +78,69 @@ export default function LogPage() {
   const programme = useActiveProgrammeOptional();
   const logs = useSessionLogs();
   const workoutOverrides = useWorkoutOverrides();
+  const manualSessions = useManualSessions();
+  const lifecycle = useSessionLifecycleOverrides();
+  const garmin = useGarminLocalState();
+  const structuredRuns = useStructuredRunningWorkouts();
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const effectiveProgramme = useMemo(() => (programme ? getEffectiveProgramme(programme, workoutOverrides) : null), [programme, workoutOverrides]);
+  const garminCompletedIds = useMemo(
+    () => getGarminCompletedSessionIds(garmin),
+    [garmin],
+  );
+  const calendarSessions = useMemo(
+    () =>
+      getCalendarSessions(
+        programme,
+        manualSessions,
+        logs,
+        workoutOverrides,
+        lifecycle,
+        garminCompletedIds,
+      ),
+    [
+      garminCompletedIds,
+      lifecycle,
+      logs,
+      manualSessions,
+      programme,
+      workoutOverrides,
+    ],
+  );
+  const plannedGarminSessions = useMemo(
+    () =>
+      calendarSessions
+        .filter(
+          (session) =>
+            Boolean(session.scheduledDate) &&
+            ["run", "fell-trail", "race"].includes(session.type),
+        )
+        .map((session) => {
+          const structured = structuredRuns[session.id];
+          const metrics = structured
+            ? getStructuredRunningMetrics(structured)
+            : null;
+
+          return {
+            sessionId: session.id,
+            title: session.workout.title,
+            date: session.scheduledDate,
+            plannedDurationSeconds:
+              metrics?.plannedDurationSeconds ??
+              session.workout.durationMinutes * 60,
+            plannedDistanceMeters:
+              metrics?.plannedDistanceMeters ?? null,
+            plannedPaceSecondsPerKm:
+              metrics?.plannedPaceSecondsPerKm ?? null,
+            plannedHeartRateRange:
+              metrics?.plannedHeartRateRange ?? null,
+            plannedElevationMeters: null,
+            plannedIntervalCount:
+              metrics?.plannedIntervalCount ?? null,
+          };
+        }),
+    [calendarSessions, structuredRuns],
+  );
 
   const workoutsById = useMemo(() => {
     return new Map((effectiveProgramme ? getAllWorkouts(effectiveProgramme) : []).map((workout) => [workout.id, workout] as const));
@@ -120,6 +193,8 @@ export default function LogPage() {
           Log manual session
         </Link>
       </header>
+
+      <GarminSyncPanel plannedSessions={plannedGarminSessions} />
 
       {logs.length > 0 ? (
         <nav aria-label="Filter logs by category" className="flex gap-2 overflow-x-auto pb-1">

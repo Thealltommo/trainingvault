@@ -15,6 +15,11 @@ import type {
   WorkoutIntensity,
   WorkoutOverride,
 } from "@/lib/types";
+import {
+  getStructuredRunningWorkout,
+  saveStructuredRunningWorkout,
+  updateStructuredRunningWorkoutDate,
+} from "@/lib/structured-running-storage";
 
 export const athleteSessionTypes = [
   "run",
@@ -515,6 +520,7 @@ export function rescheduleCalendarSession(session: CalendarSession, scheduledDat
       originalWorkout,
       variants,
     });
+    updateStructuredRunningWorkoutDate(session.id, scheduledDate);
     return;
   }
 
@@ -526,6 +532,7 @@ export function rescheduleCalendarSession(session: CalendarSession, scheduledDat
     modificationReason: current?.modificationReason ?? "Rescheduled in Plan",
     updatedAt: new Date().toISOString(),
   });
+  updateStructuredRunningWorkoutDate(session.id, scheduledDate);
 }
 
 export function duplicateCalendarSession(session: CalendarSession, scheduledDate = session.scheduledDate) {
@@ -542,6 +549,17 @@ export function duplicateCalendarSession(session: CalendarSession, scheduledDate
     targetStimulus: session.workout.targetStimulus,
   });
   saveManualSession(copy);
+  const structured = getStructuredRunningWorkout(session.id);
+
+  if (structured) {
+    saveStructuredRunningWorkout({
+      ...structured,
+      id: copy.id,
+      name: copy.originalWorkout.title,
+      date: scheduledDate,
+    });
+  }
+
   return copy;
 }
 

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarDays, Check, CheckCircle, Clock, Gauge, Pencil, Pin, RotateCcw } from "lucide-react";
 import HeroImagePanel from "@/components/HeroImagePanel";
 import SessionCompleteForm from "@/components/SessionCompleteForm";
+import StructuredRunningPrescription from "@/components/StructuredRunningPrescription";
 import SessionVariantPanel from "@/components/SessionVariantPanel";
 import WorkoutEditPanel from "@/components/WorkoutEditPanel";
 import WorkoutMovePanel from "@/components/WorkoutMovePanel";
@@ -518,6 +519,8 @@ export default function SessionPage() {
           onClose={() => setEditPanelOpen(false)}
         />
       ) : null}
+
+      <StructuredRunningPrescription sessionId={workout.id} />
 
       <SessionVariantPanel
         workout={workout}

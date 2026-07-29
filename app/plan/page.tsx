@@ -590,10 +590,16 @@ export default function PlanPage() {
               Imported programmes and manual work share one plan. Drag with a mouse or long-press on touch; every card also has a date control.
             </p>
           </div>
-          <button type="button" onClick={() => setShowAdd(true)} className="tv-button-primary">
-            <CirclePlus className="h-4 w-4" aria-hidden="true" />
-            Add session
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/plan/run/new" className="tv-button-ghost">
+              <CirclePlus className="h-4 w-4" aria-hidden="true" />
+              Structured run
+            </Link>
+            <button type="button" onClick={() => setShowAdd(true)} className="tv-button-primary">
+              <CirclePlus className="h-4 w-4" aria-hidden="true" />
+              Add session
+            </button>
+          </div>
         </div>
       </header>
 

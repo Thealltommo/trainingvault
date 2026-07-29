@@ -1,10 +1,27 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TrainVault",
-  description: "Private personal training dashboard",
+  description: "Private athlete operating system for planning, recovery, Garmin and adaptive coaching.",
+  applicationName: "TrainVault",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "TrainVault",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#d7ff1f",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({

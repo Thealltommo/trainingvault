@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TrainVault">
+  <rect width="512" height="512" fill="#d7ff1f"/>
+  <g fill="#050505">
+    <rect x="126" y="226" width="260" height="60" rx="30"/>
+    <rect x="96" y="198" width="48" height="116" rx="16"/>
+    <rect x="368" y="198" width="48" height="116" rx="16"/>
+    <rect x="150" y="180" width="30" height="152" rx="10"/>
+    <rect x="332" y="180" width="30" height="152" rx="10"/>
+  </g>
+</svg>

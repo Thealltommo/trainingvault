@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Watch,
 } from "lucide-react";
+import CloudDeviceSyncPanel from "@/components/CloudDeviceSyncPanel";
 import {
   getManualSessions,
   getSessionLifecycleOverrides,
@@ -168,7 +169,7 @@ export default function SettingsPage() {
     {
       key: "supabase",
       title: "Supabase",
-      body: "Durable athlete records and cloud migration.",
+      body: "Durable athlete records and private cross-device state.",
       state: status?.supabase ?? { configured: false },
       icon: Database,
     },
@@ -247,18 +248,20 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="tv-card border-[rgba(215,255,47,0.3)] p-4">
+      <CloudDeviceSyncPanel />
+
+      <section className="tv-card p-4">
         <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-sm bg-[var(--accent)] text-black">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-sm border border-[var(--border)] text-[var(--accent)]">
             <CloudUpload className="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <p className="tv-label text-[var(--accent)]">One-time migration</p>
+            <p className="tv-label text-[var(--accent)]">Normalized cloud foundation</p>
             <h2 className="mt-1 text-2xl font-black uppercase">
-              Migrate local TrainVault data to cloud
+              Migrate local records to the Athlete OS schema
             </h2>
             <p className="mt-2 text-sm font-bold text-[var(--muted)]">
-              Copies programmes, sessions, logs, block results, overrides, and manual sessions into durable records. It is idempotent and never removes browser data.
+              Separate from device handoff. This copies programmes, sessions, logs, block results, overrides, and manual sessions into normalized durable records. It is idempotent and never removes browser data.
             </p>
           </div>
         </div>
@@ -266,10 +269,10 @@ export default function SettingsPage() {
           type="button"
           onClick={() => void migrateLocalData()}
           disabled={migrationState === "running"}
-          className="tv-button-primary mt-4 disabled:cursor-wait disabled:opacity-60"
+          className="tv-button-ghost mt-4 disabled:cursor-wait disabled:opacity-60"
         >
           <CloudUpload className="h-4 w-4" aria-hidden="true" />
-          {migrationState === "running" ? "Migrating…" : "Migrate local data"}
+          {migrationState === "running" ? "Migrating…" : "Migrate normalized records"}
         </button>
         {migrationMessage ? (
           <p

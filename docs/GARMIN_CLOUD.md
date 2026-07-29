@@ -43,11 +43,12 @@ Create a Railway project from the GitHub repository `Thealltommo/trainingvault`.
 For the Garmin service configure:
 
 - **Root Directory:** `/services/garmin-bridge`
-- Railway will use the committed `Dockerfile` and `railway.toml`.
+- **Railway Config File:** `/services/garmin-bridge/railway.toml`
+- Railway builds the `Dockerfile` from that isolated service root.
 - Add a persistent volume mounted at `/data/garmin`.
 - Generate a public Railway HTTPS domain after the service is healthy.
 
-Railway injects `PORT`; the bridge supports it automatically.
+Railway injects `PORT`; the bridge supports it automatically. Railway's config-file path is repository-relative and does not automatically follow the configured Root Directory, which is why the explicit absolute config-file path above matters.
 
 ## 3. Railway variables
 
@@ -68,19 +69,21 @@ GARMIN_EMAIL=
 GARMIN_PASSWORD=
 ```
 
+Do not manually set `PORT` unless Railway requires a custom target; the platform injects it and TrainVault uses that value automatically.
+
 In production the bridge refuses to start without `GARMIN_BRIDGE_API_TOKEN`, disables FastAPI `/docs` and `/openapi.json`, and sends no-store/security headers.
 
 ## 4. Seed the persistent token volume
 
 The only file the service needs from the authenticated laptop is `garmin_tokens.json`.
 
-Use Railway's volume/file browser to upload the local token file into the mounted volume so the final remote path is:
+Use Railway's service/volume file browser (`railway volume browse` / Railway service files) to upload the local token file into the mounted volume so the final remote path is:
 
 ```text
 /data/garmin/garmin_tokens.json
 ```
 
-Treat the file like a password. Never commit it. Railway's volume is the long-lived store; normal deployments are disposable.
+Treat the file like a password. Never commit it. Railway's volume is the long-lived store; normal deployment filesystems are disposable.
 
 ## 5. Verify the bridge before connecting Vercel
 
@@ -109,11 +112,24 @@ Never prefix them with `NEXT_PUBLIC_`.
 
 Redeploy the Athlete OS preview and open **Settings**. Garmin should report live connectivity.
 
-## 7. Phone acceptance test
+## 7. Establish cross-device TrainVault state
+
+Before opening a fresh phone browser, use the laptop copy that currently contains the authoritative training plan/history:
+
+1. Pull the latest `feature/athlete-os-v0` branch.
+2. Open **Settings**.
+3. Under **Cross-device handoff**, choose **Use this device as source** once.
+4. Confirm Supabase reports the new cloud timestamp.
+
+This replaces only the legacy compatibility snapshot. It does not delete local data and is separate from the normalized 17-table Athlete OS migration.
+
+A fresh signed-in phone/browser can then hydrate the compatible TrainVault state automatically. Established devices reconcile in the background. If both local and cloud changed since the same baseline, TrainVault deliberately refuses to guess which side should win; use Settings to resolve the source explicitly.
+
+## 8. Phone acceptance test
 
 With the laptop Garmin bridge stopped — ideally with the laptop fully off — use the Vercel preview from a phone:
 
-1. Open TrainVault.
+1. Open TrainVault and confirm the plan/log state has hydrated.
 2. Open Today and confirm Garmin recovery can refresh.
 3. Open Log and confirm Garmin activities can sync.
 4. Open Plan and select/create a structured running session.
@@ -127,7 +143,7 @@ That proves the complete remote path:
 phone -> Vercel -> Railway -> Garmin Connect -> watch
 ```
 
-## 8. Production promotion
+## 9. Production promotion
 
 Only after the remote acceptance test succeeds:
 
@@ -141,6 +157,7 @@ Only after the remote acceptance test succeeds:
 
 - `python-garminconnect` is unofficial and Garmin may change behaviour without notice.
 - A Railway volume survives normal application redeploys; the container filesystem does not.
+- A service with an attached Railway volume cannot use replicas and may have a short interruption during deployment while the volume is remounted.
 - If the Garmin refresh token is eventually revoked, repeat the local Chrome bootstrap and replace only `/data/garmin/garmin_tokens.json`.
 - Do not enable interactive Garmin login in the cloud service.
 - The bridge is a private adapter for one TrainVault athlete, not a general Garmin proxy.

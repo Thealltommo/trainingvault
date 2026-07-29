@@ -63,6 +63,8 @@ export const navItems: NavItem[] = [
   },
 ];
 
+const mobileNavItems = navItems.filter((item) => item.href !== "/settings");
+
 export function isRouteActive(item: NavItem, pathname: string) {
   return item.match(pathname);
 }
@@ -73,10 +75,10 @@ export default function BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[#050505]/95 backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--border)] bg-[#050505]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
     >
-      <div className="grid grid-cols-6">
-        {navItems.map((item) => {
+      <div className="grid grid-cols-5">
+        {mobileNavItems.map((item) => {
           const Icon = item.icon;
           const active = isRouteActive(item, pathname);
 
@@ -84,7 +86,7 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[0.58rem] font-black uppercase sm:text-[0.66rem] ${
+              className={`flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[0.62rem] font-black uppercase tracking-tight ${
                 active ? "text-[var(--accent)]" : "text-[var(--muted)]"
               }`}
               aria-current={active ? "page" : undefined}

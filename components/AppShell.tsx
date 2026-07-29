@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Dumbbell, Settings } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
+import CloudDeviceSync from "./CloudDeviceSync";
 
 type AppShellProps = {
   children: ReactNode;
@@ -20,6 +21,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--text)]">
+      <CloudDeviceSync />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-[var(--border)] bg-[#050505]/95 px-4 py-5 md:flex md:flex-col">
         <Link href="/" className="mb-8 flex min-h-11 items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-md bg-[var(--accent)] text-black">

@@ -1,11 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  getSupabaseAdminClient,
-  getSupabaseAdminDiagnostics,
-  getTrainVaultSyncId,
-} from "@/lib/supabase-admin";
-
-const AUTH_COOKIE = "trainvault_auth";
+import { z } from "zod";
+import { isAuthorizedRequest } from "@/lib/auth";
+import { getSupabaseAdminClient, getTrainVaultSyncId } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,76 +10,25 @@ function unauthorized() {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function isSyncEnvError(error: unknown) {
   return error instanceof Error && error.message.startsWith("Supabase sync env var missing:");
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
+const syncBodySchema = z.object({
+  data: z.record(z.string(), z.unknown()),
+});
 
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
-    return error.message;
-  }
-
-  return "Unknown sync error";
-}
-
-function getErrorCode(error: unknown) {
-  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-
-  return null;
-}
-
-function isRlsError(error: unknown) {
-  return getErrorMessage(error).toLowerCase().includes("row-level security");
-}
-
-function getUserFacingSyncError(error: unknown) {
-  if (isRlsError(error)) {
-    return "Supabase RLS blocked the write. The service role key may not be the key being used by this deployment, or the table needs the single-row sync policy.";
-  }
-
-  return getErrorMessage(error);
-}
-
-function syncFailureResponse(error: unknown, status = 500) {
-  const diagnostics = getSupabaseAdminDiagnostics();
-
-  return NextResponse.json(
-    {
-      error: getUserFacingSyncError(error),
-      envPresent: diagnostics.envPresent,
-      keyPrefix: diagnostics.keyPrefix,
-      syncId: diagnostics.syncId,
-      errorMessage: getErrorMessage(error),
-      errorCode: getErrorCode(error),
-      diagnostics: {
-        envPresent: diagnostics.envPresent,
-        keyPrefix: diagnostics.keyPrefix,
-        syncId: diagnostics.syncId,
-        errorMessage: getErrorMessage(error),
-        errorCode: getErrorCode(error),
-        hasUrl: diagnostics.hasUrl,
-        hasServiceKey: diagnostics.hasServiceKey,
-        serviceKeyPrefix: diagnostics.serviceKeyPrefix,
-        serviceKeyLooksAnon: diagnostics.serviceKeyLooksAnon,
-      },
-    },
-    { status },
-  );
-}
+const MAX_SYNC_BYTES = 2 * 1_024 * 1_024;
 
 export async function POST(request: NextRequest) {
-  if (request.cookies.get(AUTH_COOKIE)?.value !== "1") {
+  if (!(await isAuthorizedRequest(request))) {
     return unauthorized();
+  }
+
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+
+  if (Number.isFinite(contentLength) && contentLength > MAX_SYNC_BYTES) {
+    return NextResponse.json({ error: "Cloud snapshot is too large" }, { status: 413 });
   }
 
   let body: unknown;
@@ -94,7 +39,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!isPlainObject(body) || !isPlainObject(body.data)) {
+  const parsedBody = syncBodySchema.safeParse(body);
+
+  if (!parsedBody.success) {
     return NextResponse.json({ error: "Expected JSON body shaped like { data: object }" }, { status: 400 });
   }
 
@@ -107,7 +54,7 @@ export async function POST(request: NextRequest) {
       .upsert(
         {
           id: syncId,
-          data: body.data,
+          data: parsedBody.data.data,
           updated_at: updatedAt,
         },
         {
@@ -118,7 +65,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      return syncFailureResponse(error);
+      return NextResponse.json({ error: "Cloud sync push failed" }, { status: 502 });
     }
 
     return NextResponse.json({
@@ -127,9 +74,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (isSyncEnvError(error)) {
-      return syncFailureResponse(error);
+      return NextResponse.json({ error: "Sync env vars missing" }, { status: 503 });
     }
 
-    return syncFailureResponse(error);
+    return NextResponse.json({ error: "Cloud sync push failed" }, { status: 502 });
   }
 }

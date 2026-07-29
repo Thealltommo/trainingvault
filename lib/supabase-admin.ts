@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import "server-only";
 
 function getEnvValue(name: string) {
   return process.env[name] ?? "";
@@ -51,24 +52,13 @@ function serviceKeyLooksAnon(serviceRoleKey: string) {
   return role === "anon" || role === "authenticated";
 }
 
-export function getSupabaseAdminDiagnostics() {
-  const supabaseUrl = getEnvValue("SUPABASE_URL");
-  const serviceRoleKey = getEnvValue("SUPABASE_SERVICE_ROLE_KEY");
-
-  return {
-    hasUrl: Boolean(supabaseUrl),
-    hasServiceKey: Boolean(serviceRoleKey),
-    envPresent: Boolean(supabaseUrl && serviceRoleKey),
-    serviceKeyPrefix: serviceRoleKey.slice(0, 8),
-    keyPrefix: serviceRoleKey.slice(0, 8),
-    serviceKeyLooksAnon: serviceKeyLooksAnon(serviceRoleKey),
-    syncId: getTrainVaultSyncId(),
-  };
-}
-
 export function getSupabaseAdminClient() {
   const supabaseUrl = getRequiredEnv("SUPABASE_URL");
   const serviceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (serviceKeyLooksAnon(serviceRoleKey)) {
+    throw new Error("Supabase sync env var missing: valid server secret key");
+  }
 
   return createClient(supabaseUrl, serviceRoleKey, {
     auth: {

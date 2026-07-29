@@ -3,18 +3,21 @@ import { Lock } from "lucide-react";
 type LoginPageProps = {
   searchParams: Promise<{
     error?: string | string[];
+    next?: string | string[];
   }>;
 };
 
 const errorMessages: Record<string, string> = {
   invalid: "Password did not match. Try again.",
   "missing-password": "TRAINVAULT_PASSWORD is not set on the server.",
+  "rate-limited": "Too many attempts. Wait a few minutes and try again.",
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const errorKey = Array.isArray(params.error) ? params.error[0] : params.error;
   const errorMessage = errorKey ? errorMessages[errorKey] : null;
+  const nextValue = Array.isArray(params.next) ? params.next[0] : params.next;
 
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10 text-[var(--text)]">
@@ -30,6 +33,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
 
         <form action="/api/login" method="post" className="tv-card grid gap-5 p-5">
+          <input type="hidden" name="next" value={nextValue ?? "/"} />
           <div>
             <p className="tv-label">Password</p>
             <p className="mt-2 text-sm text-[var(--muted)]">One-user training vault. No public accounts.</p>

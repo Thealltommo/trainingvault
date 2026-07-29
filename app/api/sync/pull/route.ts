@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isAuthorizedRequest } from "@/lib/auth";
 import { getSupabaseAdminClient, getTrainVaultSyncId } from "@/lib/supabase-admin";
-
-const AUTH_COOKIE = "trainvault_auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,7 +14,7 @@ function isSyncEnvError(error: unknown) {
 }
 
 export async function GET(request: NextRequest) {
-  if (request.cookies.get(AUTH_COOKIE)?.value !== "1") {
+  if (!(await isAuthorizedRequest(request))) {
     return unauthorized();
   }
 
@@ -29,7 +28,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Cloud sync pull failed" }, { status: 502 });
     }
 
     if (!data) {

@@ -1,6 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-
-const AUTH_COOKIE = "trainvault_auth";
+import {
+  AUTH_COOKIE,
+  AUTH_SESSION_MAX_AGE_SECONDS,
+  createAuthToken,
+  passwordMatches,
+  safeRedirectPath,
+} from "@/lib/auth";
+import {
+  clearFailedLogins,
+  getLoginRateLimit,
+  recordFailedLogin,
+} from "@/lib/login-rate-limit";
 
 function loginRedirect(request: NextRequest, error?: string) {
   const url = new URL("/login", request.url);
@@ -13,27 +23,37 @@ function loginRedirect(request: NextRequest, error?: string) {
 }
 
 export async function POST(request: NextRequest) {
+  const rateLimit = getLoginRateLimit(request);
+
+  if (!rateLimit.allowed) {
+    const response = loginRedirect(request, "rate-limited");
+    response.headers.set("Retry-After", String(rateLimit.retryAfterSeconds));
+    return response;
+  }
+
   const formData = await request.formData();
   const submittedPassword = String(formData.get("password") ?? "");
-  const expectedPassword = process.env.TRAINVAULT_PASSWORD;
+  const destination = safeRedirectPath(formData.get("next"));
 
-  if (!expectedPassword) {
+  if (!process.env.TRAINVAULT_PASSWORD) {
     return loginRedirect(request, "missing-password");
   }
 
-  if (submittedPassword !== expectedPassword) {
+  if (!(await passwordMatches(submittedPassword))) {
+    recordFailedLogin(request);
     return loginRedirect(request, "invalid");
   }
 
-  const response = NextResponse.redirect(new URL("/", request.url), 303);
+  clearFailedLogins(request);
+  const response = NextResponse.redirect(new URL(destination, request.url), 303);
   response.cookies.set({
     name: AUTH_COOKIE,
-    value: "1",
+    value: await createAuthToken(),
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
   });
 
   return response;

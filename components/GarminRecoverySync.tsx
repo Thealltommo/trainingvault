@@ -239,7 +239,11 @@ export default function GarminRecoverySync({
     }
 
     autoSyncAttempted.current = true;
-    void handleRefresh(true);
+    const timer = window.setTimeout(() => {
+      void handleRefresh(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [dailyRecovery?.garminSyncedAt, date, handleRefresh]);
 
   return (

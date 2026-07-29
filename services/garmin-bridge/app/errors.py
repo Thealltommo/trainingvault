@@ -20,8 +20,8 @@ class GarminAuthenticationRequired(GarminBridgeError):
     status_code = 503
     code = "garmin_authentication_required"
     public_message = (
-        "Garmin authentication is required. Run the local login command "
-        "to create or refresh the token store."
+        "Garmin authentication is required. Run "
+        "'python -m app.browser_login' to create or refresh the token store."
     )
 
 

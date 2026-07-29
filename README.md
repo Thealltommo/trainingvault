@@ -122,10 +122,11 @@ Run the Garmin service tests separately:
 
 ```powershell
 Set-Location services/garmin-bridge
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
+python -m pip check
 python -m pytest
 ```
 
@@ -179,18 +180,25 @@ From a second PowerShell window:
 
 ```powershell
 Set-Location services/garmin-bridge
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-python -m app.login
+python -m pip check
+python -m playwright install chromium
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+python -m app.browser_login
 python -m app
 ```
 
-The login command prompts for email, password, and MFA without terminal echo
-where appropriate, then persists refreshable tokens under
-`~/.trainvault/garmin` by default. It does not persist the entered password.
+The one-time login command opens a visible, temporary Chromium window. Enter
+credentials, CAPTCHA, and any verification only in Garmin's page. TrainVault
+does not prompt for, fill, log, or save the password and does not retain browser
+cookies or a browser profile. It starts at Garmin Connect's normal public entry
+and lets Garmin choose its current login redirects; it does not construct a
+legacy Portal sign-in URL. It verifies and saves refreshable native tokens under
+`~/.trainvault/garmin` by default, then proves a fresh normal provider can load
+them with no username or password.
 
 For the local-only bridge, set this in the root `.env.local` and restart
 TrainVault:

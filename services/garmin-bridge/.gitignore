@@ -2,6 +2,9 @@
 .env
 .env.local
 .garmin/
+browser-profile/
+garmin_tokens.json
+playwright/.auth/
 .pytest_cache/
 .ruff_cache/
 .venv/

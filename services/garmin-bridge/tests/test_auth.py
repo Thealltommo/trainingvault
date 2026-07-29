@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from garminconnect import Garmin
 from garminconnect.exceptions import GarminConnectAuthenticationError
 
 from app.auth import GarminClientProvider, LocalTokenStore
@@ -70,8 +71,6 @@ def test_local_token_store_is_used_and_credentials_are_not_repr(
     assert fake.client.skip_strategies == {
         "mobile+cffi",
         "mobile+requests",
-        "portal+cffi",
-        "portal+requests",
     }
     assert "do-not-log" not in repr(settings)
     assert "athlete@example.test" not in repr(settings)
@@ -93,3 +92,58 @@ def test_authentication_errors_are_redacted(tmp_path: Path) -> None:
         assert "private@example.test" not in raised.value.public_message
     finally:
         _FakeGarmin.login_error = None
+
+
+def test_production_provider_cold_loads_real_upstream_store_without_credentials(
+    tmp_path: Path,
+) -> None:
+    token_path = tmp_path / "tokens"
+    store = LocalTokenStore(token_path)
+    source = Garmin()
+    source.client.di_token = "placeholder-access"
+    source.client.di_refresh_token = "placeholder-refresh"
+    source.client.di_client_id = "placeholder-client"
+    store.persist(source)
+
+    class _OfflineGarmin(Garmin):
+        received_credentials: tuple[str | None, str | None] | None = None
+
+        def __init__(
+            self,
+            email: str | None,
+            password: str | None,
+            *,
+            prompt_mfa,
+        ) -> None:
+            type(self).received_credentials = (email, password)
+            super().__init__(email, password, prompt_mfa=prompt_mfa)
+
+        def login(self, source_path: str) -> None:
+            self.client.load(source_path)
+
+        def get_user_profile(self) -> dict[str, str]:
+            return {"displayName": "athlete"}
+
+        def get_devices(self) -> list[dict[str, str]]:
+            return [{"displayName": "watch"}]
+
+    settings = Settings(
+        email=None,
+        password=None,
+        token_store_path=token_path,
+        interactive_auth=False,
+    )
+    provider = GarminClientProvider(
+        settings,
+        store,
+        client_type=_OfflineGarmin,
+    )
+
+    restored = provider.get_client()
+
+    assert _OfflineGarmin.received_credentials == (None, None)
+    assert restored.client.di_token == "placeholder-access"
+    assert restored.client.di_refresh_token == "placeholder-refresh"
+    assert restored.client.di_client_id == "placeholder-client"
+    assert restored.get_user_profile() == {"displayName": "athlete"}
+    assert restored.get_devices() == [{"displayName": "watch"}]

@@ -15,6 +15,22 @@ def _as_bool(value: str | None, *, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def token_store_path_from_env(
+    *,
+    load_environment_file: bool = True,
+) -> Path:
+    """Resolve only the token-store setting needed by bootstrap commands."""
+    if load_environment_file:
+        load_dotenv(override=False)
+
+    configured_path = os.getenv("GARMIN_TOKEN_STORE", "").strip()
+    return (
+        Path(configured_path).expanduser()
+        if configured_path
+        else Path.home() / ".trainvault" / "garmin"
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Runtime settings.
@@ -41,11 +57,8 @@ class Settings:
         if load_environment_file:
             load_dotenv(override=False)
 
-        configured_path = os.getenv("GARMIN_TOKEN_STORE", "").strip()
-        token_store_path = (
-            Path(configured_path).expanduser()
-            if configured_path
-            else Path.home() / ".trainvault" / "garmin"
+        token_store_path = token_store_path_from_env(
+            load_environment_file=False,
         )
 
         port_value = os.getenv("GARMIN_BRIDGE_PORT", "").strip()

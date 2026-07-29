@@ -55,10 +55,10 @@ without a token.
 
 | Variable | Default/meaning |
 | --- | --- |
-| `GARMIN_EMAIL` | Optional first-login email. Prefer the interactive prompt. |
-| `GARMIN_PASSWORD` | Optional first-login password. Prefer the non-echoing prompt and remove it after login. |
+| `GARMIN_EMAIL` | Legacy programmatic recovery only. Browser bootstrap ignores it; keep it blank. |
+| `GARMIN_PASSWORD` | Legacy programmatic recovery only. Browser bootstrap ignores it; keep it blank. |
 | `GARMIN_TOKEN_STORE` | Token directory; defaults to `~/.trainvault/garmin`. |
-| `GARMIN_INTERACTIVE_AUTH` | Boolean; permits an MFA prompt when the running process has a TTY. |
+| `GARMIN_INTERACTIVE_AUTH` | Legacy programmatic recovery only; permits a terminal MFA prompt. |
 | `GARMIN_BRIDGE_API_TOKEN` | Server-to-server bearer token; mandatory for a non-loopback bind. |
 | `GARMIN_BRIDGE_HOST` | Defaults to `127.0.0.1`. |
 | `GARMIN_BRIDGE_PORT` | Defaults to `8765`. |
@@ -72,32 +72,90 @@ The root Next environment uses:
 
 Do not prefix either root variable with `NEXT_PUBLIC_`.
 
-## First local login on Windows
+## Install and perform the first browser login on Windows
 
-Use a dedicated virtual environment:
+Use a clean, dedicated Python 3.12 virtual environment. Explicitly selecting
+the interpreter prevents compiled wheels from a different Python version being
+mixed into the environment:
 
 ```powershell
 Set-Location services/garmin-bridge
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-python -m app.login
+python -m pip check
+python -m playwright install chromium
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-The login command:
+Leave `GARMIN_EMAIL` and `GARMIN_PASSWORD` blank. The browser command
+deliberately does not load `.env`, so a forgotten password there cannot enter
+the bootstrap process. When the default `~/.trainvault/garmin` location is
+unsuitable, pass the path explicitly and set the same value in `.env` for later
+bridge startups:
 
-1. uses `GARMIN_EMAIL`/`GARMIN_PASSWORD` only if explicitly supplied;
-2. otherwise prompts for email and a non-echoing password;
-3. prompts for MFA without echo when Garmin requires it;
-4. calls `python-garminconnect` login;
-5. writes refreshable token state to `GARMIN_TOKEN_STORE`;
-6. prints only the token directory, never tokens or credentials.
+```powershell
+python -m app.browser_login
+# Custom path:
+python -m app.browser_login --token-store C:\private\trainvault-garmin
+```
 
-The entered password is not saved by TrainVault. Leave `GARMIN_EMAIL` and
-`GARMIN_PASSWORD` blank after the token login unless a deliberate recovery flow
-requires them.
+The command:
+
+1. launches Playwright Chromium with `headless=False` and an ephemeral context;
+2. opens Garmin's normal `https://connect.garmin.com/modern/` entry and lets
+   Garmin choose its current redirects; TrainVault never constructs a
+   `/portal/sso/...` login URL;
+3. lets you type credentials and complete Garmin JavaScript, CAPTCHA, or
+   step-up verification entirely in Garmin's page;
+4. watches trusted Garmin response metadata and Connect navigation for an
+   unconsumed service ticket plus Garmin's exact service URL, including path
+   spelling and trailing slash;
+5. separately recognizes an authenticated Connect page plus an applicable
+   `JWT_WEB` cookie, or a validated JSON current-user response, without
+   exporting, printing, or persisting cookie values, and briefly keeps
+   monitoring queued network events for the exchange artifact;
+6. closes the browser and gives the captured ticket and exact service URL to
+   python-garminconnect 0.3.7's version-pinned native DI OAuth exchange;
+7. requires a real lightweight authenticated profile response before writing;
+8. writes the native `di_token`, `di_refresh_token`, and `di_client_id` to a
+   temporary sibling store through python-garminconnect's hardened writer;
+9. creates a fresh `GarminClientProvider` with username and password explicitly
+   absent, reloads only that saved store, and verifies the profile and device
+   methods used by the bridge;
+10. atomically promotes the verified token file, leaving an existing working
+   store untouched if any earlier step fails.
+
+The command never calls a Python credential prompt, fills a password field,
+prints authentication material, writes Playwright `storage_state`, or creates a
+persistent browser profile. CAPTCHA and other Garmin controls are neither
+disabled nor bypassed. TLS verification remains at the browser and upstream
+client defaults. The legacy `python -m app.login` and
+`trainvault-garmin-login` entry points are compatibility aliases for this same
+browser flow; neither accepts credentials in Python.
+
+The bridge pins python-garminconnect 0.3.7 because the public client does not
+yet expose a browser-ticket bootstrap method. The compatibility seam is isolated
+and tested; re-audit it before changing that dependency version. The older
+Garth OAuth token format and `.garth` files are not compatible with this store.
+Version 0.3.7 cannot serialize browser cookies by themselves: its compatible
+store contains only `di_token`, `di_refresh_token`, and `di_client_id`. If
+Garmin Connect is authenticated but its current flow exposes no unconsumed
+Connect ticket, the command therefore fails clearly without writing tokens or
+retrying credentials.
+
+Progress is reported without secret values:
+
+```text
+Opening Garmin login ...
+Browser authenticated.
+Garmin ticket/session captured.
+Exchanging tokens.
+Verifying profile.
+Verifying devices.
+Token store promoted.
+```
 
 The local token store uses upstream owner-only file protections: 0700 directory
 and 0600 token file on supported POSIX systems. On Windows it lives under the
@@ -117,9 +175,11 @@ It listens on `127.0.0.1:8765` by default. In a separate window:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8765/health
+Invoke-RestMethod http://127.0.0.1:8765/profile
+Invoke-RestMethod http://127.0.0.1:8765/devices
 ```
 
-Expected shape:
+The health response has this shape:
 
 ```json
 {
@@ -128,6 +188,11 @@ Expected shape:
   "version": "0.1.0"
 }
 ```
+
+`/profile` must return the normalized authenticated Garmin profile, and
+`/devices` must return the account's real registered watch list. If
+`GARMIN_BRIDGE_API_TOKEN` is configured, send it as an `Authorization: Bearer`
+header for those two account-data requests; `/health` remains public.
 
 Configure the root `.env.local`:
 
@@ -149,6 +214,28 @@ GARMIN_BRIDGE_API_KEY=the-same-random-value
 Restart both processes after environment changes. Sign in to TrainVault and
 check **Settings -> Garmin bridge** or call the authenticated
 `/api/garmin/health` route from the browser.
+
+## Delete tokens and re-authenticate
+
+Stop the bridge before changing its token file. For the default Windows token
+store, delete only this file:
+
+```powershell
+Remove-Item -LiteralPath "$env:USERPROFILE\.trainvault\garmin\garmin_tokens.json"
+```
+
+For a custom `GARMIN_TOKEN_STORE` directory, delete only its
+`garmin_tokens.json`. If `GARMIN_TOKEN_STORE` itself ends in `.json`, delete
+that exact file. Do not remove the containing directory or unrelated files.
+Then run:
+
+```powershell
+python -m app.browser_login
+python -m app
+```
+
+No browser profile or cookie file needs deletion because the bootstrap never
+creates one.
 
 ## Service tests
 
@@ -254,7 +341,7 @@ separate `SessionLog`.
 ### A. Preflight
 
 1. Confirm the upcoming Sunday as an explicit `YYYY-MM-DD` date.
-2. Run `python -m app.login` at least once and confirm token persistence.
+2. Run `python -m app.browser_login` once and confirm saved-token verification.
 3. Start `python -m app`; verify `/health`.
 4. Set `GARMIN_BRIDGE_URL` in root `.env.local`; if protected, verify the two
    bridge token variables contain the same value.

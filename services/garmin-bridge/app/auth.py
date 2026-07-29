@@ -43,7 +43,10 @@ class LocalTokenStore:
     """
 
     def __init__(self, path: Path) -> None:
-        self.path = path.expanduser().resolve()
+        # Keep the final component lexical so the upstream O_NOFOLLOW token
+        # writer (or browser bootstrap's os.replace) cannot be redirected by
+        # a pre-existing token-file symlink.
+        self.path = path.expanduser().absolute()
 
     def login_source(self) -> str:
         return str(self.path)
@@ -89,12 +92,10 @@ class GarminClientProvider:
             )
 
             # Garmin's mobile SSO can remain rate-limited for many hours.
-            # Prefer the widget SSO fallback, which uses a separate authentication path.
+            # Keep the widget and portal strategies available as fallbacks.
             client.client.skip_strategies.update({
                 "mobile+cffi",
                 "mobile+requests",
-                "portal+cffi",
-                "portal+requests",
             })
 
             try:

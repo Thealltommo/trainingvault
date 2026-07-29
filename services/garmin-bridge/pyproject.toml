@@ -26,7 +26,7 @@ dev = [
 ]
 
 [project.scripts]
-trainvault-garmin-login = "app.browser_login:main"
+trainvault-garmin-login = "app.browser_login_chrome:main"
 trainvault-garmin-bridge = "app.__main__:main"
 
 [tool.setuptools.packages.find]

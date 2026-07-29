@@ -15,6 +15,7 @@ import {
 import {
   analyseGarminPlannedVsActual,
   generateGarminPostRunCoachInsight,
+  toGarminActivityMatchingSession,
   type GarminPlannedSession,
   type NormalizedGarminActivity,
 } from "@/lib/garmin-storage";
@@ -235,6 +236,32 @@ describe("Garmin Next API authentication", () => {
 });
 
 describe("Garmin planned versus actual", () => {
+  it("sends only matching fields through the strict activity-sync boundary", () => {
+    const matchingSession = toGarminActivityMatchingSession({
+      sessionId: "run-sunday",
+      title: "Sunday easy run",
+      date: "2026-08-02",
+      plannedDurationSeconds: 2_700,
+      plannedDistanceMeters: null,
+      plannedPaceSecondsPerKm: 345,
+      plannedHeartRateRange: [130, 145],
+      plannedElevationMeters: 80,
+      plannedIntervalCount: null,
+    });
+
+    expect(matchingSession).toEqual({
+      sessionId: "run-sunday",
+      title: "Sunday easy run",
+      date: "2026-08-02",
+      plannedStartTime: undefined,
+      plannedDistanceMeters: null,
+      plannedDurationSeconds: 2_700,
+      garminWorkoutId: undefined,
+    });
+    expect(matchingSession).not.toHaveProperty("plannedPaceSecondsPerKm");
+    expect(matchingSession).not.toHaveProperty("plannedHeartRateRange");
+  });
+
   it("reports bounded comparable metrics without inventing RPE", () => {
     const planned: GarminPlannedSession = {
       sessionId: "run-sunday",

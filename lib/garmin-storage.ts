@@ -92,6 +92,20 @@ export type GarminPostRunCoachInsight = {
   confidence: string;
 };
 
+export function toGarminActivityMatchingSession(
+  session: GarminPlannedSession,
+): PlannedRunningSession {
+  return {
+    sessionId: session.sessionId,
+    title: session.title,
+    date: session.date,
+    plannedStartTime: session.plannedStartTime,
+    plannedDistanceMeters: session.plannedDistanceMeters,
+    plannedDurationSeconds: session.plannedDurationSeconds,
+    garminWorkoutId: session.garminWorkoutId,
+  };
+}
+
 const EMPTY_STATE: GarminLocalState = {
   version: 1,
   workoutSync: {},

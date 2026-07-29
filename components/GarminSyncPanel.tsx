@@ -17,6 +17,7 @@ import {
   generateGarminPostRunCoachInsight,
   getKnownGarminActivityIds,
   mergeGarminActivityBatch,
+  toGarminActivityMatchingSession,
   useGarminLocalState,
   type GarminActivityLink,
   type GarminActivitySyncApiRecord,
@@ -302,7 +303,9 @@ export default function GarminSyncPanel({
           start: mode === "latest" ? 0 : garmin.nextActivityStart,
           limit: 30,
           knownActivityIds: getKnownGarminActivityIds(),
-          plannedSessions: availableSessionsForMatching,
+          plannedSessions: availableSessionsForMatching.map(
+            toGarminActivityMatchingSession,
+          ),
         }),
       });
       const value = (await response.json()) as unknown;

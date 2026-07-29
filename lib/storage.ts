@@ -18,12 +18,13 @@ const TODAY_OVERRIDE_KEY = "selectedTodayWorkoutId";
 const LEGACY_TODAY_OVERRIDE_KEY = "trainvault_today_workout_id";
 const STORAGE_CHANGE_EVENT = "trainvault:storage-change";
 const EMPTY_BLOCK_RESULTS: Record<string, BlockResult> = {};
+const EMPTY_SESSION_LOGS: SessionLog[] = [];
 const EMPTY_WORKOUT_OVERRIDES: Record<string, WorkoutOverride> = {};
 let currentNowSnapshot = 0;
 let programmeSnapshotRaw: string | null | undefined;
 let programmeSnapshotValue: Programme | null = null;
 let logsSnapshotRaw: string | null | undefined;
-let logsSnapshotValue: SessionLog[] = [];
+let logsSnapshotValue: SessionLog[] = EMPTY_SESSION_LOGS;
 let workoutOverridesSnapshotRaw: string | null | undefined;
 let workoutOverridesSnapshotValue: Record<string, WorkoutOverride> = EMPTY_WORKOUT_OVERRIDES;
 let todayOverrideSnapshotRaw: string | null | undefined;
@@ -134,7 +135,7 @@ function getOptionalProgrammeSnapshot(): Programme | null {
 
 function getLogsSnapshot(): SessionLog[] {
   if (!canUseStorage()) {
-    return [];
+    return EMPTY_SESSION_LOGS;
   }
 
   try {
@@ -145,10 +146,13 @@ function getLogsSnapshot(): SessionLog[] {
     }
 
     logsSnapshotRaw = raw;
-    logsSnapshotValue = raw ? (JSON.parse(raw) as SessionLog[]) : [];
+    logsSnapshotValue = raw
+      ? (JSON.parse(raw) as SessionLog[])
+      : EMPTY_SESSION_LOGS;
     return logsSnapshotValue;
   } catch {
-    return [];
+    logsSnapshotValue = EMPTY_SESSION_LOGS;
+    return EMPTY_SESSION_LOGS;
   }
 }
 
@@ -302,7 +306,11 @@ export function getSessionLogs(): SessionLog[] {
 }
 
 export function useSessionLogs(): SessionLog[] {
-  return useSyncExternalStore(subscribeStorage, getLogsSnapshot, () => []);
+  return useSyncExternalStore(
+    subscribeStorage,
+    getLogsSnapshot,
+    () => EMPTY_SESSION_LOGS,
+  );
 }
 
 export function getWorkoutOverrides(): Record<string, WorkoutOverride> {

@@ -11,6 +11,7 @@ from app.errors import GarminAuthenticationRequired
 class _TokenClient:
     def __init__(self) -> None:
         self.dumped_to: str | None = None
+        self.skip_strategies: set[str] = set()
 
     def dump(self, path: str) -> None:
         self.dumped_to = path
@@ -66,6 +67,10 @@ def test_local_token_store_is_used_and_credentials_are_not_repr(
     assert fake is not None
     assert fake.logged_in_with == str((tmp_path / "tokens").resolve())
     assert fake.client.dumped_to == str((tmp_path / "tokens").resolve())
+    assert fake.client.skip_strategies == {
+        "mobile+cffi",
+        "mobile+requests",
+    }
     assert "do-not-log" not in repr(settings)
     assert "athlete@example.test" not in repr(settings)
 

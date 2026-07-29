@@ -87,6 +87,14 @@ class GarminClientProvider:
                 self._settings.password,
                 prompt_mfa=self._prompt_mfa,
             )
+
+            # Garmin's mobile SSO can remain rate-limited for many hours.
+            # Prefer the widget SSO fallback, which uses a separate authentication path.
+            client.client.skip_strategies.update({
+                "mobile+cffi",
+                "mobile+requests",
+            })
+
             try:
                 client.login(self._token_store.login_source())
                 # Persist after every login so token refreshes are not lost.

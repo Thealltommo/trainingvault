@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell } from "lucide-react";
+import { Dumbbell, Settings } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 
 type AppShellProps = {
@@ -64,8 +64,34 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </aside>
 
-      <main className="min-h-screen overflow-x-hidden pb-32 md:ml-64 md:pb-8">
-        <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 md:py-8">{children}</div>
+      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#050505]/95 px-4 backdrop-blur md:hidden">
+        <Link href="/" className="flex min-h-11 items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded bg-[var(--accent)] text-black">
+            <Dumbbell className="h-4.5 w-4.5" strokeWidth={2.6} aria-hidden="true" />
+          </span>
+          <span>
+            <span className="block text-sm font-black uppercase leading-none">TrainVault</span>
+            <span className="text-[0.58rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+              Athlete OS
+            </span>
+          </span>
+        </Link>
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+          className={`grid h-10 w-10 place-items-center rounded-md border ${
+            pathname.startsWith("/settings")
+              ? "border-[var(--accent)] text-[var(--accent)]"
+              : "border-[var(--border)] text-[var(--muted)]"
+          }`}
+        >
+          <Settings className="h-5 w-5" aria-hidden="true" />
+        </Link>
+      </header>
+
+      <main className="min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-64 md:pb-8">
+        <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 md:px-6 md:py-8">{children}</div>
       </main>
       <BottomNav />
     </div>

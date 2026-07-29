@@ -66,7 +66,6 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8765
     environment: str = "development"
-    rate_limit_per_minute: int = 180
 
     @property
     def production(self) -> bool:
@@ -97,13 +96,6 @@ class Settings:
             maximum=65_535,
             name="GARMIN_BRIDGE_PORT/PORT",
         )
-        rate_limit = _as_int(
-            os.getenv("GARMIN_BRIDGE_RATE_LIMIT_PER_MINUTE"),
-            default=180,
-            minimum=30,
-            maximum=10_000,
-            name="GARMIN_BRIDGE_RATE_LIMIT_PER_MINUTE",
-        )
 
         return cls(
             email=os.getenv("GARMIN_EMAIL") or None,
@@ -115,5 +107,4 @@ class Settings:
             port=port,
             environment=os.getenv("GARMIN_BRIDGE_ENV", "development").strip().lower()
             or "development",
-            rate_limit_per_minute=rate_limit,
         )

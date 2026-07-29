@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CloudDownload, CloudUpload, RefreshCw } from "lucide-react";
 import {
   applyCloudDeviceSnapshot,
@@ -26,11 +26,9 @@ export default function CloudDeviceSyncPanel() {
   const [busy, setBusy] = useState<"pull" | "push" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [lastCloud, setLastCloud] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLastCloud(readCloudSyncMeta().lastCloudUpdatedAt);
-  }, []);
+  const [lastCloud, setLastCloud] = useState<string | null>(
+    () => readCloudSyncMeta().lastCloudUpdatedAt,
+  );
 
   async function pushCurrentDevice() {
     const confirmed = window.confirm(

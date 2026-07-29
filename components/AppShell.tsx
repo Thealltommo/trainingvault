@@ -27,7 +27,7 @@ export default function AppShell({ children }: AppShellProps) {
           </span>
           <span>
             <span className="block text-lg font-black uppercase leading-none">TrainVault</span>
-            <span className="text-xs font-bold uppercase text-[var(--muted)]">Private engine room</span>
+            <span className="text-xs font-bold uppercase text-[var(--muted)]">Athlete operating system</span>
           </span>
         </Link>
 
@@ -54,8 +54,13 @@ export default function AppShell({ children }: AppShellProps) {
           })}
         </nav>
 
-        <div className="mt-auto border-t border-[var(--border)] pt-4 text-xs font-bold uppercase text-[var(--muted)]">
-          Local-first · cloud optional
+        <div className="mt-auto border-t border-[var(--border)] pt-4">
+          <p className="text-[0.65rem] font-black uppercase tracking-[0.16em] text-[var(--accent)]">
+            Private · adaptive · evidence-led
+          </p>
+          <p className="mt-1 text-[0.65rem] font-bold uppercase text-[var(--muted)]">
+            Local-first · cloud foundation ready
+          </p>
         </div>
       </aside>
 

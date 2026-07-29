@@ -61,7 +61,7 @@ export default function AppShell({ children }: AppShellProps) {
             Private · adaptive · evidence-led
           </p>
           <p className="mt-1 text-[0.65rem] font-bold uppercase text-[var(--muted)]">
-            Local-first · cloud foundation ready
+            Local-first · cross-device cloud handoff
           </p>
         </div>
       </aside>

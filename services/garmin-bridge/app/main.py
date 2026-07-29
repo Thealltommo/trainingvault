@@ -74,16 +74,14 @@ def create_app(
     gateway: GarminGateway | None = None,
     *,
     api_token: str | None = None,
+    production: bool | None = None,
 ) -> FastAPI:
     """Create an isolated app instance for production or tests."""
-    api = FastAPI(
-        title="TrainVault Garmin Bridge",
-        version=__version__,
-        docs_url="/docs",
-        redoc_url=None,
-    )
+    runtime_production = bool(production)
+
     if gateway is None:
         settings = Settings.from_env()
+        runtime_production = settings.production if production is None else production
         if settings.host not in {"127.0.0.1", "::1", "localhost"} and not (
             settings.api_token
         ):
@@ -93,8 +91,33 @@ def create_app(
         gateway = _build_gateway(settings)
         api_token = settings.api_token
 
+    if runtime_production and not api_token:
+        raise RuntimeError("GARMIN_BRIDGE_API_TOKEN is required in production")
+
+    api = FastAPI(
+        title="TrainVault Garmin Bridge",
+        version=__version__,
+        docs_url=None if runtime_production else "/docs",
+        redoc_url=None,
+        openapi_url=None if runtime_production else "/openapi.json",
+    )
+
     api.state.garmin_gateway = gateway
     api.state.api_token = api_token
+    api.state.production = runtime_production
+
+    @api.middleware("http")
+    async def hardened_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        if runtime_production:
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     @api.exception_handler(GarminBridgeError)
     async def handle_bridge_error(

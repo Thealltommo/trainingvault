@@ -51,3 +51,20 @@ jobs:
       - run: python -m compileall app
       - name: Build production bridge image
         run: docker build -t trainvault-garmin-bridge:ci .
+      - name: Smoke-test production bridge health
+        run: |
+          docker run -d --name trainvault-garmin-ci \
+            -e GARMIN_BRIDGE_API_TOKEN=ci-server-secret \
+            -e GARMIN_BRIDGE_ENV=production \
+            -e GARMIN_BRIDGE_HOST=0.0.0.0 \
+            -e PORT=8765 \
+            -p 8765:8765 \
+            trainvault-garmin-bridge:ci
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8765/health | grep -q '"status":"ok"'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs trainvault-garmin-ci
+          exit 1

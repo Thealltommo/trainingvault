@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -39,6 +39,8 @@ type RecoveryApiPayload = {
   } | null;
   partial: boolean;
 };
+
+const AUTO_SYNC_MAX_AGE_MS = 90 * 60 * 1000;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -134,6 +136,15 @@ function formatLastSync(value: string | null) {
       }).format(date);
 }
 
+function recoveryNeedsRefresh(lastSync: string | null | undefined) {
+  if (!lastSync) {
+    return true;
+  }
+
+  const timestamp = new Date(lastSync).getTime();
+  return !Number.isFinite(timestamp) || Date.now() - timestamp > AUTO_SYNC_MAX_AGE_MS;
+}
+
 export default function GarminRecoverySync({
   date,
 }: GarminRecoverySyncProps) {
@@ -141,15 +152,18 @@ export default function GarminRecoverySync({
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const autoSyncAttempted = useRef(false);
 
-  async function handleRefresh() {
+  const handleRefresh = useCallback(async (automatic = false) => {
     if (syncing || !date) {
       return;
     }
 
     setSyncing(true);
-    setMessage("");
-    setError("");
+    if (!automatic) {
+      setMessage("");
+      setError("");
+    }
 
     try {
       const response = await fetch(
@@ -191,23 +205,42 @@ export default function GarminRecoverySync({
       }
 
       const missing = payload.recovery.unavailableMetrics.length;
+      setError("");
       setMessage(
         payload.partial
           ? `Recovery refreshed with partial Garmin data${
               missing > 0 ? ` · ${missing} source${missing === 1 ? "" : "s"} unavailable` : ""
             }.`
-          : "Recovery refreshed from Garmin.",
+          : automatic
+            ? "Garmin recovery synced automatically."
+            : "Recovery refreshed from Garmin.",
       );
     } catch (syncError) {
-      setError(
+      const nextError =
         syncError instanceof Error
           ? syncError.message
-          : "Garmin recovery could not be refreshed.",
-      );
+          : "Garmin recovery could not be refreshed.";
+
+      if (!automatic) {
+        setError(nextError);
+      }
     } finally {
       setSyncing(false);
     }
-  }
+  }, [date, syncing]);
+
+  useEffect(() => {
+    if (autoSyncAttempted.current || !date) {
+      return;
+    }
+
+    if (!recoveryNeedsRefresh(dailyRecovery?.garminSyncedAt)) {
+      return;
+    }
+
+    autoSyncAttempted.current = true;
+    void handleRefresh(true);
+  }, [dailyRecovery?.garminSyncedAt, date, handleRefresh]);
 
   return (
     <section className="tv-card p-4">
@@ -216,12 +249,14 @@ export default function GarminRecoverySync({
           <p className="tv-label text-[var(--accent)]">Garmin signals</p>
           <p className="mt-1 flex items-center gap-2 text-xs font-bold text-[var(--muted)]">
             <Watch className="h-3.5 w-3.5" aria-hidden="true" />
-            {formatLastSync(dailyRecovery?.garminSyncedAt ?? null)}
+            {syncing && !dailyRecovery?.garminSyncedAt
+              ? "Syncing Garmin…"
+              : formatLastSync(dailyRecovery?.garminSyncedAt ?? null)}
           </p>
         </div>
         <button
           type="button"
-          onClick={() => void handleRefresh()}
+          onClick={() => void handleRefresh(false)}
           disabled={syncing}
           className="tv-button-ghost min-h-9 px-3 py-1 text-xs disabled:cursor-wait disabled:opacity-50"
         >
@@ -230,7 +265,7 @@ export default function GarminRecoverySync({
           ) : (
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           )}
-          Refresh
+          {syncing ? "Syncing" : "Refresh"}
         </button>
       </div>
 

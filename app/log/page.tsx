@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { CirclePlus, Trash2 } from "lucide-react";
 import { normalizeLimiter } from "@/lib/session-log";
 import {
   deleteSessionLog,
@@ -107,12 +107,18 @@ export default function LogPage() {
 
   return (
     <div className="grid gap-5">
-      <header className="border-b border-[var(--border)] pb-5">
-        <p className="tv-label text-[var(--accent)]">Training Log</p>
-        <h1 className="mt-2 text-5xl font-black uppercase leading-none sm:text-6xl">Work Bank</h1>
-        <p className="mt-3 max-w-2xl text-base font-bold text-[var(--muted)]">
-          Completed sessions, effort, results, and field notes.
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-5">
+        <div>
+          <p className="tv-label text-[var(--accent)]">Training Log</p>
+          <h1 className="mt-2 text-5xl font-black uppercase leading-none sm:text-6xl">Work Bank</h1>
+          <p className="mt-3 max-w-2xl text-base font-bold text-[var(--muted)]">
+            Completed sessions, effort, results, and field notes.
+          </p>
+        </div>
+        <Link href="/log/manual" className="tv-button-primary">
+          <CirclePlus className="h-4 w-4" aria-hidden="true" />
+          Log manual session
+        </Link>
       </header>
 
       {logs.length > 0 ? (
@@ -150,8 +156,8 @@ export default function LogPage() {
           <p className="tv-label">No logs</p>
           <h2 className="mt-2 text-2xl font-black uppercase">Nothing banked yet</h2>
           <p className="mt-2 text-sm font-bold text-[var(--muted)]">Complete a session to start building history.</p>
-          <Link href="/program" className="tv-button-primary mt-5">
-            Open program
+          <Link href="/log/manual" className="tv-button-primary mt-5">
+            Log Hawkeye / CrossFit
           </Link>
         </section>
       ) : (

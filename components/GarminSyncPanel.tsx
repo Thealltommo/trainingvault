@@ -225,9 +225,16 @@ export default function GarminSyncPanel({
   const [syncing, setSyncing] = useState<"latest" | "older" | null>(null);
   const [syncError, setSyncError] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
+  const sessionsForMatching = plannedSessions.map((session) => ({
+    ...session,
+    garminWorkoutId:
+      session.garminWorkoutId ??
+      garmin.workoutSync[session.sessionId]?.garminWorkoutId ??
+      null,
+  }));
 
   const plannedById = new Map(
-    plannedSessions.map((session) => [session.sessionId, session]),
+    sessionsForMatching.map((session) => [session.sessionId, session]),
   );
 
   function notifyLinked(
@@ -265,7 +272,7 @@ export default function GarminSyncPanel({
           start: mode === "latest" ? 0 : garmin.nextActivityStart,
           limit: 30,
           knownActivityIds: getKnownGarminActivityIds(),
-          plannedSessions,
+          plannedSessions: sessionsForMatching,
         }),
       });
       const value = (await response.json()) as unknown;

@@ -93,6 +93,8 @@ class GarminClientProvider:
             client.client.skip_strategies.update({
                 "mobile+cffi",
                 "mobile+requests",
+                "portal+cffi",
+                "portal+requests",
             })
 
             try:

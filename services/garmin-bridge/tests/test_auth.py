@@ -70,6 +70,8 @@ def test_local_token_store_is_used_and_credentials_are_not_repr(
     assert fake.client.skip_strategies == {
         "mobile+cffi",
         "mobile+requests",
+        "portal+cffi",
+        "portal+requests",
     }
     assert "do-not-log" not in repr(settings)
     assert "athlete@example.test" not in repr(settings)

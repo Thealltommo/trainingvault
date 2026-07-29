@@ -18,21 +18,47 @@ import {
 } from "@/lib/planning-storage";
 import { getTrainVaultSnapshot } from "@/lib/storage";
 
-type IntegrationStatus = {
-  openai: { configured: boolean };
-  garmin: { configured: boolean };
-  supabase: { configured: boolean };
+type IntegrationState = {
+  configured: boolean;
+  healthy?: boolean;
+  version?: string | null;
 };
 
-function StatusDot({ configured }: { configured: boolean }) {
+type IntegrationStatus = {
+  openai: IntegrationState;
+  garmin: IntegrationState;
+  supabase: IntegrationState;
+};
+
+function StatusDot({ state }: { state: IntegrationState }) {
+  const tone = !state.configured
+    ? "bg-white/25"
+    : state.healthy === false
+      ? "bg-amber-300"
+      : "bg-[var(--accent)]";
+
   return (
     <span
-      className={`h-2.5 w-2.5 rounded-full ${
-        configured ? "bg-[var(--accent)]" : "bg-white/25"
-      }`}
-      aria-label={configured ? "Configured" : "Not configured"}
+      className={`h-2.5 w-2.5 rounded-full ${tone}`}
+      aria-label={integrationLabel(state)}
     />
   );
+}
+
+function integrationLabel(state: IntegrationState) {
+  if (!state.configured) {
+    return "Optional";
+  }
+
+  if (state.healthy === false) {
+    return "Configured · offline";
+  }
+
+  if (state.healthy === true) {
+    return "Live";
+  }
+
+  return "Configured";
 }
 
 export default function SettingsPage() {
@@ -125,7 +151,8 @@ export default function SettingsPage() {
       setMigrationMessage(
         payload.alreadyMigrated
           ? "This exact local snapshot was already migrated. No duplicates were created."
-          : payload.message || "Local data copied to cloud. The browser copy remains untouched.",
+          : payload.message ||
+              "Local data copied to cloud. The browser copy remains untouched.",
       );
     } catch (error) {
       setMigrationState("error");
@@ -142,21 +169,24 @@ export default function SettingsPage() {
       key: "supabase",
       title: "Supabase",
       body: "Durable athlete records and cloud migration.",
-      configured: status?.supabase.configured ?? false,
+      state: status?.supabase ?? { configured: false },
       icon: Database,
     },
     {
       key: "garmin",
       title: "Garmin bridge",
-      body: "Structured workouts, health data, and completed activities.",
-      configured: status?.garmin.configured ?? false,
+      body:
+        status?.garmin.healthy && status.garmin.version
+          ? `Structured workouts, health and activities · bridge ${status.garmin.version}.`
+          : "Structured workouts, health data, and completed activities.",
+      state: status?.garmin ?? { configured: false },
       icon: Watch,
     },
     {
       key: "openai",
       title: "OpenAI Coach",
       body: "Controlled interpretation and proposed plan changes.",
-      configured: status?.openai.configured ?? false,
+      state: status?.openai ?? { configured: false },
       icon: ShieldCheck,
     },
   ];
@@ -208,8 +238,8 @@ export default function SettingsPage() {
                   <p className="text-xs font-bold text-[var(--muted)]">{row.body}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-xs font-black uppercase text-[var(--muted)]">
-                  <StatusDot configured={row.configured} />
-                  {status ? (row.configured ? "Ready" : "Optional") : "Checking"}
+                  <StatusDot state={row.state} />
+                  {status ? integrationLabel(row.state) : "Checking"}
                 </div>
               </article>
             );

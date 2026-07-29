@@ -6,11 +6,13 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, CalendarDays, Check, CheckCircle, Clock, Gauge, Pencil, Pin, RotateCcw } from "lucide-react";
 import HeroImagePanel from "@/components/HeroImagePanel";
 import SessionCompleteForm from "@/components/SessionCompleteForm";
+import SessionVariantPanel from "@/components/SessionVariantPanel";
 import WorkoutEditPanel from "@/components/WorkoutEditPanel";
 import WorkoutMovePanel from "@/components/WorkoutMovePanel";
 import WorkoutScalePanel from "@/components/WorkoutScalePanel";
 import { getHeroImageForWorkout } from "@/lib/hero-images";
 import { normalizeLimiter } from "@/lib/session-log";
+import { useManualSessions } from "@/lib/planning-storage";
 import {
   applyWorkoutOverride,
   deleteWorkoutOverride,
@@ -264,6 +266,7 @@ function scrollToLogForm() {
 export default function SessionPage() {
   const params = useParams<{ id: string }>();
   const programme = useActiveProgrammeOptional();
+  const manualSessions = useManualSessions();
   const logs = useSessionLogs();
   const selectedTodayWorkoutId = useTodayWorkoutOverride();
   const workoutOverrides = useWorkoutOverrides();
@@ -272,8 +275,14 @@ export default function SessionPage() {
   const [editPanelOpen, setEditPanelOpen] = useState(false);
 
   const sourceWorkout = useMemo(() => {
-    return programme ? getAllWorkouts(programme).find((candidate) => candidate.id === params.id) ?? null : null;
-  }, [params.id, programme]);
+    const programmeWorkout = programme
+      ? getAllWorkouts(programme).find((candidate) => candidate.id === params.id) ?? null
+      : null;
+    const manualWorkout =
+      manualSessions.find((candidate) => candidate.id === params.id)?.originalWorkout ?? null;
+
+    return programmeWorkout ?? manualWorkout;
+  }, [manualSessions, params.id, programme]);
   const workoutOverride = sourceWorkout ? workoutOverrides[sourceWorkout.id] ?? null : null;
   const workout = useMemo(() => {
     return sourceWorkout ? applyWorkoutOverride(sourceWorkout, workoutOverride) : null;
@@ -330,8 +339,8 @@ export default function SessionPage() {
       <section className="tv-card p-5">
         <p className="tv-label">Session</p>
         <h1 className="mt-2 text-3xl font-black uppercase">Session not found</h1>
-        <Link href="/program" className="tv-button-primary mt-5">
-          Back to program
+        <Link href="/plan" className="tv-button-primary mt-5">
+          Back to plan
         </Link>
       </section>
     );
@@ -381,9 +390,9 @@ export default function SessionPage() {
 
   return (
     <div className="grid gap-5 pb-24 md:pb-0">
-      <Link href="/program" className="inline-flex min-h-11 items-center gap-2 text-sm font-black uppercase text-[var(--muted)] hover:text-[var(--accent)]">
+      <Link href="/plan" className="inline-flex min-h-11 items-center gap-2 text-sm font-black uppercase text-[var(--muted)] hover:text-[var(--accent)]">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Program
+        Plan
       </Link>
 
       <HeroImagePanel src={sessionHeroSrc} title={workout.title} kicker={workout.category} className="hero-media-large">
@@ -509,6 +518,11 @@ export default function SessionPage() {
           onClose={() => setEditPanelOpen(false)}
         />
       ) : null}
+
+      <SessionVariantPanel
+        workout={workout}
+        sourceWorkout={originalWorkout}
+      />
 
       <section className="tv-card border-[rgba(215,255,47,0.28)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">

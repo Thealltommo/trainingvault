@@ -55,7 +55,7 @@ export default function AppShell({ children }: AppShellProps) {
         </nav>
 
         <div className="mt-auto border-t border-[var(--border)] pt-4 text-xs font-bold uppercase text-[var(--muted)]">
-          Local data only
+          Local-first · cloud optional
         </div>
       </aside>
 

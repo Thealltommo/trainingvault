@@ -1,26 +1,328 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #050505;
+  --surface: #0d0d0d;
+  --elevated: #151515;
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --accent: #d7ff2f;
+  --accent-dark: #99c900;
+  --foreground: var(--text);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    linear-gradient(135deg, rgba(215, 255, 47, 0.05) 0 1px, transparent 1px 22px),
+    var(--background);
+  color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--accent);
+  color: #050505;
+}
+
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tv-card {
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface);
+}
+
+.tv-card-hover {
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.tv-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.tv-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-width: 1px;
+  border-radius: 0.2rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  backdrop-filter: blur(10px);
+}
+
+.tv-button-primary {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  padding: 0.7rem 1rem;
+  color: #050505;
+  font-size: 0.875rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.tv-button-primary:hover {
+  border-color: var(--accent-dark);
+  background: var(--accent-dark);
+}
+
+.tv-button-ghost {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: #050505;
+  padding: 0.7rem 1rem;
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.tv-button-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.tv-input {
+  min-height: 2.75rem;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: #050505;
+  padding: 0 0.85rem;
+  color: var(--text);
+  outline: none;
+}
+
+.tv-input::placeholder {
+  color: #737373;
+}
+
+.tv-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(215, 255, 47, 0.4);
+}
+
+.hero-media {
+  position: relative;
+  min-height: 240px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: #050505;
+  isolation: isolate;
+}
+
+.hero-media-large {
+  min-height: clamp(280px, 38vw, 420px);
+}
+
+.hero-media-compact {
+  min-height: clamp(200px, 24vw, 300px);
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.72) 42%, rgba(5, 5, 5, 0.2) 100%),
+    linear-gradient(0deg, rgba(5, 5, 5, 0.72) 0%, rgba(5, 5, 5, 0.08) 55%, rgba(5, 5, 5, 0.42) 100%);
+}
+
+.hero-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-shadow:
+    inset 0 0 120px rgba(0, 0, 0, 0.88),
+    inset 0 -80px 120px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+
+.hero-stripe {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  height: 4px;
+  width: min(42rem, 72%);
+  background: linear-gradient(90deg, var(--accent), transparent);
+  box-shadow: 0 0 30px rgba(215, 255, 47, 0.28);
+}
+
+.premium-workout-card {
+  transform: translateZ(0);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -80px 110px rgba(0, 0, 0, 0.28),
+    0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
+.premium-workout-card-image {
+  z-index: -4;
+  transform: scale(1.02);
+  filter: saturate(0.95) contrast(1.08);
+  transition: transform 260ms ease;
+}
+
+.premium-workout-card-completed .premium-workout-card-image {
+  filter: saturate(0.72) contrast(1.02);
+}
+
+.premium-workout-card-today {
+  border-color: rgba(215, 255, 47, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 0 1px rgba(215, 255, 47, 0.12),
+    0 24px 78px rgba(0, 0, 0, 0.46);
+}
+
+.premium-workout-card-today .premium-workout-card-rule {
+  height: 4px;
+  width: 72%;
+}
+
+.premium-workout-card-next {
+  border-color: rgba(215, 255, 47, 0.28);
+}
+
+.premium-workout-card-next .premium-workout-card-rule {
+  width: 64%;
+}
+
+.premium-workout-card-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background:
+    linear-gradient(90deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.82) 42%, rgba(5, 5, 5, 0.34) 100%),
+    linear-gradient(180deg, rgba(5, 5, 5, 0.2) 0%, rgba(5, 5, 5, 0.72) 100%);
+}
+
+.premium-workout-card-gloss {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.11), transparent 24%),
+    radial-gradient(circle at 12% 0%, rgba(215, 255, 47, 0.12), transparent 24rem);
+  pointer-events: none;
+}
+
+.premium-workout-card-beam {
+  position: absolute;
+  top: -30%;
+  right: 10%;
+  z-index: -1;
+  width: 9rem;
+  height: 150%;
+  background: linear-gradient(180deg, transparent, rgba(215, 255, 47, 0.08), transparent);
+  transform: rotate(18deg);
+  pointer-events: none;
+}
+
+.premium-workout-card-rule {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  width: 55%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  box-shadow: 0 0 24px rgba(215, 255, 47, 0.32);
+}
+
+.premium-workout-card:focus-within {
+  border-color: rgba(215, 255, 47, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(215, 255, 47, 0.18),
+    0 24px 70px rgba(0, 0, 0, 0.4);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .tv-card-hover:hover,
+  .tv-button-primary:hover,
+  .tv-button-ghost:hover {
+    transform: translateY(-2px);
+  }
+
+  .premium-workout-card:hover {
+    border-color: rgba(215, 255, 47, 0.42);
+    transform: translateY(-3px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 0 0 1px rgba(215, 255, 47, 0.1),
+      0 28px 84px rgba(0, 0, 0, 0.5);
+  }
+
+  .premium-workout-card:hover .premium-workout-card-image {
+    transform: scale(1.055);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

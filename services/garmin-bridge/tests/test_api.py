@@ -229,3 +229,29 @@ def test_configured_bridge_token_protects_account_data_but_not_health() -> None:
     assert wrong.status_code == 401
     assert valid.status_code == 200
     assert "server-secret" not in missing.text
+
+
+def test_production_bridge_disables_schema_and_sets_security_headers() -> None:
+    app = create_app(
+        _FakeGateway(),
+        api_token="server-secret",
+        production=True,
+    )  # type: ignore[arg-type]
+    with TestClient(app) as client:
+        health = client.get("/health")
+        docs = client.get("/docs")
+        schema = client.get("/openapi.json")
+        profile = client.get(
+            "/profile",
+            headers={"Authorization": "Bearer server-secret"},
+        )
+
+    assert health.status_code == 200
+    assert docs.status_code == 404
+    assert schema.status_code == 404
+    assert profile.status_code == 200
+    assert profile.headers["cache-control"] == "no-store"
+    assert profile.headers["x-content-type-options"] == "nosniff"
+    assert profile.headers["referrer-policy"] == "no-referrer"
+    assert profile.headers["x-frame-options"] == "DENY"
+    assert "max-age=31536000" in profile.headers["strict-transport-security"]

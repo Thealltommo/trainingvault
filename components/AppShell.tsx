@@ -7,6 +7,7 @@ import { ArrowRight, Dumbbell, Gauge, Settings, Sparkles } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
 import LatestSessionHero from "./LatestSessionHero";
+import PlanManager from "./PlanManager";
 
 type AppShellProps = {
   children: ReactNode;
@@ -122,6 +123,8 @@ export default function AppShell({ children }: AppShellProps) {
 
       <main className="tv-shell-content min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-[15.5rem] md:pb-10">
         <div className="relative mx-auto w-full max-w-[1420px] px-3 py-4 sm:px-5 md:px-7 md:py-7 xl:px-9 xl:py-9">
+          {showPlanStudioPrompt ? <PlanManager /> : null}
+
           {showPlanStudioPrompt ? (
             <Link
               href="/plan/build"

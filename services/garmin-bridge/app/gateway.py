@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import date
+from math import isfinite
 from typing import Any, TypeVar
 
 from garminconnect import Garmin
@@ -42,6 +43,7 @@ from .normalizers import (
     normalize_recovery,
     normalize_training_status,
 )
+from .route_models import ActivityRouteBounds, ActivityRoutePoint, ActivityRouteResponse
 from .workouts import to_garmin_running_workout
 
 T = TypeVar("T")
@@ -110,6 +112,60 @@ class GarminGateway:
         activities = self.activities(start=0, limit=1, activity_type=None)
         return LatestActivityResponse(
             activity=activities.activities[0] if activities.activities else None
+        )
+
+    def activity_route(self, activity_id: str) -> ActivityRouteResponse:
+        """Return only bounded GPS geometry required for TrainVault's private trace."""
+        raw = self._call(
+            lambda client: client.get_activity_details(
+                activity_id,
+                maxchart=1,
+                maxpoly=1_200,
+            )
+        )
+        if not isinstance(raw, Mapping):
+            raise GarminInvalidResponse()
+
+        geo = raw.get("geoPolylineDTO")
+        if not isinstance(geo, Mapping):
+            return ActivityRouteResponse(activity_id=activity_id)
+
+        polyline = geo.get("polyline")
+        if not isinstance(polyline, list):
+            return ActivityRouteResponse(activity_id=activity_id)
+
+        points: list[ActivityRoutePoint] = []
+        for item in polyline[:1_500]:
+            if not isinstance(item, Mapping):
+                continue
+            lat = _route_number(item.get("lat"))
+            lon = _route_number(item.get("lon"))
+            if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                continue
+            points.append(
+                ActivityRoutePoint(
+                    lat=lat,
+                    lon=lon,
+                    elevation_meters=_route_number(item.get("altitude")),
+                    distance_meters=_route_number(item.get("distanceInMeters")),
+                    time_ms=_route_int(item.get("time")),
+                )
+            )
+
+        if not points:
+            return ActivityRouteResponse(activity_id=activity_id)
+
+        lats = [point.lat for point in points]
+        lons = [point.lon for point in points]
+        return ActivityRouteResponse(
+            activity_id=activity_id,
+            points=points,
+            bounds=ActivityRouteBounds(
+                min_lat=min(lats),
+                max_lat=max(lats),
+                min_lon=min(lons),
+                max_lon=max(lons),
+            ),
         )
 
     def recovery(self, snapshot_date: date) -> DailyRecoveryResponse:
@@ -273,6 +329,26 @@ class GarminGateway:
             workout_id=workout_id,
             device_id=resolved_device_id,
         )
+
+
+def _route_number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if isfinite(parsed) else None
+
+
+def _route_int(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
 
 
 def _identifier(value: Any) -> str | None:

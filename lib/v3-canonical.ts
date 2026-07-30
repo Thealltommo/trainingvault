@@ -14,6 +14,8 @@ export type V3SyncResult = {
   entityCount: number;
 };
 
+export type V3DecisionStatus = "proposed" | "accepted" | "rejected" | "applied" | "expired";
+
 function cleanResult(value: unknown, fallbackFingerprint: string, fallbackCount: number): V3SyncResult {
   const row = value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -60,7 +62,7 @@ export async function persistCanonicalSnapshot(value: unknown): Promise<V3SyncRe
 export async function recordCanonicalDecision(input: {
   decisionKey: string;
   decisionType: string;
-  status?: "proposed" | "accepted" | "rejected" | "applied" | "expired";
+  status?: V3DecisionStatus;
   rationale?: string | null;
   proposal: Record<string, unknown>;
 }) {
@@ -93,6 +95,26 @@ export async function recordCanonicalDecision(input: {
   if (error) {
     throw new Error("Canonical decision audit write failed.");
   }
+}
+
+export async function updateCanonicalDecisionStatus(
+  decisionKey: string,
+  status: Exclude<V3DecisionStatus, "proposed">,
+) {
+  const client = getSupabaseAdminClient();
+  const syncId = getTrainVaultSyncId();
+  const { data, error } = await client
+    .from("trainvault_v3_decisions")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("sync_id", syncId)
+    .eq("decision_key", decisionKey.slice(0, 240))
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Canonical decision status update failed.");
+  }
+  return Boolean(data);
 }
 
 export async function getCanonicalCloudSummary() {

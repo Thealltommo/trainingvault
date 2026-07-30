@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { isAuthorizedRequest } from "@/lib/auth";
-import { getSupabaseAdminClient, getTrainVaultSyncId } from "@/lib/supabase-admin";
+import { persistCanonicalSnapshot } from "@/lib/v3-canonical";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -46,31 +46,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabase = getSupabaseAdminClient();
-    const syncId = getTrainVaultSyncId();
-    const updatedAt = new Date().toISOString();
-    const { data, error } = await supabase
-      .from("trainvault_state")
-      .upsert(
-        {
-          id: syncId,
-          data: parsedBody.data.data,
-          updated_at: updatedAt,
-        },
-        {
-          onConflict: "id",
-        },
-      )
-      .select("updated_at")
-      .single();
-
-    if (error) {
-      return NextResponse.json({ error: "Cloud sync push failed" }, { status: 502 });
-    }
+    const result = await persistCanonicalSnapshot(parsedBody.data.data);
 
     return NextResponse.json({
       ok: true,
-      updated_at: data.updated_at,
+      updated_at: result.updatedAt,
+      v3: {
+        canonical: true,
+        fingerprint: result.fingerprint,
+        entityCount: result.entityCount,
+      },
     });
   } catch (error) {
     if (isSyncEnvError(error)) {

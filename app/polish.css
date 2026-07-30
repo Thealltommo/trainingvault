@@ -1,0 +1,194 @@
+:root {
+  --surface-soft: rgba(255, 255, 255, 0.028);
+  --surface-glass: rgba(14, 14, 14, 0.78);
+  --accent-wash: rgba(215, 255, 47, 0.1);
+}
+
+.tv-card {
+  border-radius: 0.8rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 42%),
+    linear-gradient(140deg, rgba(215, 255, 47, 0.025), transparent 34%),
+    var(--surface);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 54px rgba(0, 0, 0, 0.18);
+}
+
+.tv-button-primary,
+.tv-button-ghost,
+.tv-input {
+  border-radius: 0.65rem;
+}
+
+.tv-button-primary {
+  box-shadow:
+    0 0 0 1px rgba(215, 255, 47, 0.05),
+    0 10px 30px rgba(215, 255, 47, 0.08);
+}
+
+.tv-button-primary:active,
+.tv-button-ghost:active {
+  transform: translateY(1px);
+}
+
+.tv-input {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    #080808;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.tv-label {
+  letter-spacing: 0.055em;
+}
+
+.tv-product-hero {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 14% 4%, rgba(215, 255, 47, 0.15), transparent 26rem),
+    radial-gradient(circle at 88% 92%, rgba(215, 255, 47, 0.065), transparent 24rem),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 42%),
+    #090a08;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 30px 90px rgba(0, 0, 0, 0.28);
+}
+
+.tv-product-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 3px;
+  z-index: -1;
+  background: linear-gradient(90deg, var(--accent), rgba(215, 255, 47, 0.2) 38%, transparent 78%);
+  box-shadow: 0 0 24px rgba(215, 255, 47, 0.22);
+}
+
+.tv-session-hero {
+  animation: tv-hero-in 420ms ease-out both;
+}
+
+.tv-metric-tile {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    rgba(0, 0, 0, 0.38);
+  padding: 0.8rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.tv-metric-tile strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.tv-choice-card {
+  min-height: 13rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1rem;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.035), transparent 56%),
+    rgba(11, 11, 11, 0.82);
+  padding: 1.15rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 54px rgba(0, 0, 0, 0.16);
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+}
+
+.tv-choice-card-active {
+  border-color: rgba(215, 255, 47, 0.54);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(215, 255, 47, 0.1), transparent 18rem),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.04), transparent 56%),
+    rgba(11, 11, 11, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 0 1px rgba(215, 255, 47, 0.07),
+    0 24px 70px rgba(0, 0, 0, 0.26);
+}
+
+.tv-soft-card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1rem;
+  background:
+    linear-gradient(145deg, rgba(215, 255, 47, 0.035), transparent 36%),
+    rgba(12, 12, 12, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.tv-day-button {
+  min-height: 3rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.7rem;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.tv-day-button-active {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+.tv-session-preview {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.95rem;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.035), transparent 52%),
+    rgba(8, 8, 8, 0.76);
+  padding: 1rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+@keyframes tv-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .tv-choice-card:hover,
+  .tv-day-button:hover,
+  .tv-session-preview:hover {
+    border-color: rgba(215, 255, 47, 0.34);
+  }
+
+  .tv-choice-card:hover {
+    transform: translateY(-3px);
+  }
+}
+
+@media (max-width: 640px) {
+  .tv-card {
+    border-radius: 0.7rem;
+  }
+
+  .tv-choice-card {
+    min-height: auto;
+  }
+
+  .tv-metric-tile strong {
+    font-size: 1rem;
+  }
+}

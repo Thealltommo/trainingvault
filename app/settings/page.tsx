@@ -4,25 +4,22 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CalendarDays,
-  CloudUpload,
   Database,
   FileJson,
+  Gauge,
   LogOut,
   RefreshCw,
   ShieldCheck,
   Watch,
 } from "lucide-react";
 import CloudDeviceSyncPanel from "@/components/CloudDeviceSyncPanel";
-import {
-  getManualSessions,
-  getSessionLifecycleOverrides,
-} from "@/lib/planning-storage";
-import { getTrainVaultSnapshot } from "@/lib/storage";
+import V3CloudBrain from "@/components/V3CloudBrain";
 
 type IntegrationState = {
   configured: boolean;
   healthy?: boolean;
   version?: string | null;
+  canonical?: boolean;
 };
 
 type IntegrationStatus = {
@@ -47,39 +44,23 @@ function StatusDot({ state }: { state: IntegrationState }) {
 }
 
 function integrationLabel(state: IntegrationState) {
-  if (!state.configured) {
-    return "Optional";
-  }
-
-  if (state.healthy === false) {
-    return "Configured · offline";
-  }
-
-  if (state.healthy === true) {
-    return "Live";
-  }
-
+  if (!state.configured) return "Optional";
+  if (state.healthy === false) return "Configured · offline";
+  if (state.healthy === true && state.canonical) return "Live · canonical";
+  if (state.healthy === true) return "Live";
   return "Configured";
 }
 
 export default function SettingsPage() {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [statusError, setStatusError] = useState("");
-  const [migrationState, setMigrationState] = useState<
-    "idle" | "running" | "complete" | "error"
-  >("idle");
-  const [migrationMessage, setMigrationMessage] = useState("");
 
   async function loadStatus() {
     setStatusError("");
 
     try {
       const response = await fetch("/api/status", { cache: "no-store" });
-
-      if (!response.ok) {
-        throw new Error("Integration status is unavailable");
-      }
-
+      if (!response.ok) throw new Error("Integration status is unavailable");
       setStatus((await response.json()) as IntegrationStatus);
     } catch {
       setStatusError(
@@ -90,86 +71,38 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-
-    fetch("/api/status", {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Integration status is unavailable");
-        }
-
-        return (await response.json()) as IntegrationStatus;
+    const timer = window.setTimeout(() => {
+      fetch("/api/status", {
+        cache: "no-store",
+        signal: controller.signal,
       })
-      .then(setStatus)
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
+        .then(async (response) => {
+          if (!response.ok) throw new Error("Integration status is unavailable");
+          return (await response.json()) as IntegrationStatus;
+        })
+        .then(setStatus)
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          setStatusError(
+            "Could not read server integration status. Local training data is still available.",
+          );
+        });
+    }, 0);
 
-        setStatusError(
-          "Could not read server integration status. Local training data is still available.",
-        );
-      });
-
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, []);
-
-  async function migrateLocalData() {
-    const confirmed = window.confirm(
-      "Copy the current local TrainVault snapshot to the normalized cloud store? Local data will not be deleted.",
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setMigrationState("running");
-    setMigrationMessage("");
-
-    try {
-      const response = await fetch("/api/cloud/migrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          snapshot: getTrainVaultSnapshot(),
-          manualSessions: getManualSessions(),
-          lifecycle: getSessionLifecycleOverrides(),
-        }),
-      });
-      const payload = (await response.json()) as {
-        error?: string;
-        message?: string;
-        alreadyMigrated?: boolean;
-      };
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Cloud migration failed");
-      }
-
-      setMigrationState("complete");
-      setMigrationMessage(
-        payload.alreadyMigrated
-          ? "This exact local snapshot was already migrated. No duplicates were created."
-          : payload.message ||
-              "Local data copied to cloud. The browser copy remains untouched.",
-      );
-    } catch (error) {
-      setMigrationState("error");
-      setMigrationMessage(
-        error instanceof Error
-          ? error.message
-          : "Cloud migration failed. Local data remains untouched.",
-      );
-    }
-  }
 
   const integrationRows = [
     {
       key: "supabase",
-      title: "Supabase",
-      body: "Durable athlete records and private cross-device state.",
+      title: "Supabase V3 cloud",
+      body:
+        status?.supabase.canonical
+          ? "Canonical athlete history, rollback snapshots and server-only records."
+          : "Durable athlete records and private cross-device state.",
       state: status?.supabase ?? { configured: false },
       icon: Database,
     },
@@ -178,7 +111,7 @@ export default function SettingsPage() {
       title: "Garmin bridge",
       body:
         status?.garmin.healthy && status.garmin.version
-          ? `Structured workouts, health and activities · bridge ${status.garmin.version}.`
+          ? `Remote workouts, health and activities · bridge ${status.garmin.version}.`
           : "Structured workouts, health data, and completed activities.",
       state: status?.garmin ?? { configured: false },
       icon: Watch,
@@ -186,7 +119,7 @@ export default function SettingsPage() {
     {
       key: "openai",
       title: "OpenAI Coach",
-      body: "Controlled interpretation and proposed plan changes.",
+      body: "Controlled interpretation, proposed plan changes and V3 decision audit.",
       state: status?.openai ?? { configured: false },
       icon: ShieldCheck,
     },
@@ -200,7 +133,7 @@ export default function SettingsPage() {
           Private athlete system
         </h1>
         <p className="mt-2 max-w-2xl text-sm font-bold text-[var(--muted)]">
-          External services enhance TrainVault, but none of them can make today&apos;s session inaccessible.
+          External services enhance TrainVault, but the athlete-facing plan remains available even when an integration has a bad day.
         </p>
       </header>
 
@@ -225,7 +158,6 @@ export default function SettingsPage() {
         <div className="mt-4 grid gap-2">
           {integrationRows.map((row) => {
             const Icon = row.icon;
-
             return (
               <article
                 key={row.key}
@@ -248,43 +180,23 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <V3CloudBrain compact />
       <CloudDeviceSyncPanel />
 
-      <section className="tv-card p-4">
-        <div className="flex items-start gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-sm border border-[var(--border)] text-[var(--accent)]">
-            <CloudUpload className="h-5 w-5" aria-hidden="true" />
-          </span>
+      <section className="tv-card overflow-hidden">
+        <div className="grid gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-center sm:p-5">
           <div>
-            <p className="tv-label text-[var(--accent)]">Normalized cloud foundation</p>
-            <h2 className="mt-1 text-2xl font-black uppercase">
-              Migrate local records to the Athlete OS schema
-            </h2>
-            <p className="mt-2 text-sm font-bold text-[var(--muted)]">
-              Separate from device handoff. This copies programmes, sessions, logs, block results, overrides, and manual sessions into normalized durable records. It is idempotent and never removes browser data.
+            <p className="tv-label text-[var(--accent)]">V3 architecture</p>
+            <h2 className="mt-1 text-2xl font-black uppercase">Browser is the cockpit. Cloud is the history.</h2>
+            <p className="mt-2 max-w-2xl text-sm font-bold text-[var(--muted)]">
+              The old auth-linked relational migration is no longer required for this private single-athlete deployment. V3 mirrors validated TrainVault state into a server-only canonical entity bank and keeps append-only rollback snapshots.
             </p>
           </div>
+          <Link href="/command" className="tv-button-primary">
+            <Gauge className="h-4 w-4" aria-hidden="true" />
+            Open command
+          </Link>
         </div>
-        <button
-          type="button"
-          onClick={() => void migrateLocalData()}
-          disabled={migrationState === "running"}
-          className="tv-button-ghost mt-4 disabled:cursor-wait disabled:opacity-60"
-        >
-          <CloudUpload className="h-4 w-4" aria-hidden="true" />
-          {migrationState === "running" ? "Migrating…" : "Migrate normalized records"}
-        </button>
-        {migrationMessage ? (
-          <p
-            className={`mt-3 border-l-2 pl-3 text-sm font-bold ${
-              migrationState === "complete"
-                ? "border-[var(--accent)] text-[var(--text)]"
-                : "border-white/30 text-[var(--muted)]"
-            }`}
-          >
-            {migrationMessage}
-          </p>
-        ) : null}
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -299,7 +211,7 @@ export default function SettingsPage() {
           <FileJson className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
           <h2 className="mt-3 text-xl font-black uppercase">Import / export JSON</h2>
           <p className="mt-1 text-sm font-bold text-[var(--muted)]">
-            Preserve the existing programme and full-snapshot workflows.
+            Preserve the programme and full-snapshot escape hatch.
           </p>
         </Link>
         <Link href="/program" className="tv-card tv-card-hover p-4">

@@ -15,13 +15,16 @@ import {
   ShieldCheck,
   Sparkles,
   Target,
+  Watch,
 } from "lucide-react";
 import {
   buildPlanStudioSessions,
+  buildPlanStudioStructuredWorkout,
   planStudioGoalLabel,
   type PlanStudioGoal,
 } from "@/lib/plan-studio";
 import { createManualSession, saveManualSession } from "@/lib/planning-storage";
+import { saveStructuredRunningWorkout } from "@/lib/structured-running-storage";
 
 const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const goals: Array<{
@@ -87,18 +90,20 @@ export default function PlanStudioPage() {
   function savePlan() {
     if (saved || runDays.length < 2) return;
     sessions.forEach((session) => {
-      saveManualSession(
-        createManualSession({
-          title: session.title,
-          type: session.type,
-          scheduledDate: session.date,
-          durationMinutes: session.durationMinutes,
-          minimumMinutes: session.minimumMinutes,
-          intensity: session.intensity,
-          prescription: session.prescription,
-          targetStimulus: session.targetStimulus,
-        }),
-      );
+      const manual = createManualSession({
+        title: session.title,
+        type: session.type,
+        scheduledDate: session.date,
+        durationMinutes: session.durationMinutes,
+        minimumMinutes: session.minimumMinutes,
+        intensity: session.intensity,
+        prescription: session.prescription,
+        targetStimulus: session.targetStimulus,
+      });
+      saveManualSession(manual);
+
+      const structured = buildPlanStudioStructuredWorkout(manual.id, session);
+      if (structured) saveStructuredRunningWorkout(structured);
     });
     setSaved(true);
     window.setTimeout(() => router.push("/plan"), 350);
@@ -287,7 +292,12 @@ export default function PlanStudioPage() {
                     <p className="tv-label text-[var(--accent)]">Week {session.week} · {session.date}</p>
                     <h3 className="mt-2 text-lg font-black uppercase">{session.title}</h3>
                   </div>
-                  <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[0.62rem] font-black uppercase text-[var(--muted)]">{session.intensity}</span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className="rounded-full border border-white/10 bg-black/40 px-2.5 py-1 text-[0.62rem] font-black uppercase text-[var(--muted)]">{session.intensity}</span>
+                    {session.type === "run" || session.type === "fell-trail" ? (
+                      <span className="inline-flex items-center gap-1 text-[0.6rem] font-black uppercase text-[var(--accent)]"><Watch className="h-3 w-3" aria-hidden="true" /> Garmin-ready</span>
+                    ) : null}
+                  </div>
                 </div>
                 <p className="mt-3 whitespace-pre-line text-sm font-bold leading-relaxed text-[var(--muted)]">{session.prescription}</p>
                 <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3 text-xs font-black uppercase">
@@ -303,7 +313,7 @@ export default function PlanStudioPage() {
               <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0 text-[var(--accent)]" aria-hidden="true" />
               <div>
                 <p className="tv-label text-[var(--accent)]">Guardrail</p>
-                <p className="mt-2 text-sm font-bold leading-relaxed text-[var(--muted)]">This builder creates a conservative deterministic baseline. It does not use recovery data to fabricate future certainty. Daily Full / Adjusted / Minimum decisions stay separate and evidence-led.</p>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-[var(--muted)]">This builder creates a conservative deterministic baseline. It does not use recovery data to fabricate future certainty. Daily Full / Adjusted / Minimum decisions stay separate and evidence-led. Running prescriptions are saved as structured workouts so they can be scheduled to Garmin from the session page.</p>
               </div>
             </div>
           </div>

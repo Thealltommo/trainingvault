@@ -28,19 +28,19 @@ async function garminHealth(configured: boolean) {
 
 async function supabaseHealth(configured: boolean) {
   if (!configured) {
-    return { configured: false, healthy: false };
+    return { configured: false, healthy: false, canonical: false };
   }
 
   try {
     const client = getSupabaseAdminClient();
     const { error } = await client
-      .from("trainvault_state")
-      .select("id", { count: "exact", head: true })
+      .from("trainvault_v3_athletes")
+      .select("sync_id", { count: "exact", head: true })
       .limit(1);
 
-    return { configured: true, healthy: !error };
+    return { configured: true, healthy: !error, canonical: !error };
   } catch {
-    return { configured: true, healthy: false };
+    return { configured: true, healthy: false, canonical: false };
   }
 }
 

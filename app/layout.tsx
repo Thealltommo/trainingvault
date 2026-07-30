@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import AppShell from "@/components/AppShell";
 import "./globals.css";
 import "./polish.css";
+import "./editorial.css";
 
 export const metadata: Metadata = {
   title: "TrainVault",

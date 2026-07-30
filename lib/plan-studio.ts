@@ -138,15 +138,27 @@ function sessionForRole(
   };
 }
 
-function chooseRoles(runDays: number[], longRunDay: number) {
-  const ordered = [...new Set(runDays)].sort((a, b) => a - b);
-  const nonLong = ordered.filter((day) => day !== longRunDay);
+function chooseRoles(runDays: number[], requestedLongRunDay: number) {
+  const ordered = [...new Set(runDays)]
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .sort((a, b) => a - b);
+  const effectiveLongRunDay = ordered.includes(requestedLongRunDay)
+    ? requestedLongRunDay
+    : ordered[ordered.length - 1];
+  const nonLong = ordered.filter((day) => day !== effectiveLongRunDay);
   const roles = new Map<number, "quality" | "easy" | "long">();
-  if (ordered.includes(longRunDay)) roles.set(longRunDay, "long");
+
+  if (effectiveLongRunDay != null) roles.set(effectiveLongRunDay, "long");
   if (nonLong[0] != null) roles.set(nonLong[0], "quality");
   nonLong.slice(1).forEach((day) => roles.set(day, "easy"));
   if (nonLong.length >= 3) roles.set(nonLong[nonLong.length - 1], "quality");
   return roles;
+}
+
+function isInsideRequestedDates(date: string, config: PlanStudioConfig) {
+  if (date < config.startDate) return false;
+  if (config.targetDate && date > config.targetDate) return false;
+  return true;
 }
 
 export function buildPlanStudioSessions(config: PlanStudioConfig): PlanStudioSession[] {
@@ -159,6 +171,8 @@ export function buildPlanStudioSessions(config: PlanStudioConfig): PlanStudioSes
     for (const [day, role] of roles.entries()) {
       const shape = sessionForRole(config.goal, role, week, recoveryWeek);
       const date = dateKey(addDays(monday, (week - 1) * 7 + day));
+      if (!isInsideRequestedDates(date, config)) continue;
+
       sessions.push({
         id: `studio-${config.goal}-${week}-${day}`,
         week,
@@ -174,8 +188,10 @@ export function buildPlanStudioSessions(config: PlanStudioConfig): PlanStudioSes
       });
     }
 
-    for (const day of [...new Set(config.hawkeyeDays)]) {
+    for (const day of [...new Set(config.hawkeyeDays)].filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)) {
       const date = dateKey(addDays(monday, (week - 1) * 7 + day));
+      if (!isInsideRequestedDates(date, config)) continue;
+
       sessions.push({
         id: `studio-hawkeye-${week}-${day}`,
         week,

@@ -1,0 +1,38 @@
+import { describe, expect, it } from "vitest";
+import { buildPlanStudioSessions } from "@/lib/plan-studio";
+
+describe("Plan Studio", () => {
+  it("builds a bounded hybrid-aware block with recovery weeks", () => {
+    const sessions = buildPlanStudioSessions({
+      goal: "5k",
+      startDate: "2026-08-03",
+      weeks: 8,
+      runDays: [1, 3, 5, 6],
+      longRunDay: 6,
+      hawkeyeDays: [0, 2],
+      currentFiveK: "22:19",
+      targetFiveK: "19:59",
+    });
+
+    expect(sessions).toHaveLength(48);
+    expect(sessions.filter((session) => session.type === "crossfit")).toHaveLength(16);
+    expect(sessions.filter((session) => session.type === "run")).toHaveLength(32);
+    expect(sessions.some((session) => session.week === 4 && session.targetStimulus.includes("Recovery-week"))).toBe(true);
+    expect(sessions.every((session) => session.durationMinutes >= session.minimumMinutes)).toBe(true);
+  });
+
+  it("turns Spartan long days into trail sessions", () => {
+    const sessions = buildPlanStudioSessions({
+      goal: "spartan",
+      startDate: "2026-08-03",
+      weeks: 8,
+      runDays: [1, 4, 6],
+      longRunDay: 6,
+      hawkeyeDays: [],
+    });
+
+    const longRuns = sessions.filter((session) => session.role === "long");
+    expect(longRuns).toHaveLength(8);
+    expect(longRuns.every((session) => session.type === "fell-trail")).toBe(true);
+  });
+});

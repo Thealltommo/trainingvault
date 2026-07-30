@@ -57,11 +57,40 @@ export async function persistCanonicalSnapshot(value: unknown): Promise<V3SyncRe
   return cleanResult(data, fingerprint, entities.length);
 }
 
+export async function recordCanonicalDecision(input: {
+  decisionKey: string;
+  decisionType: string;
+  status?: "proposed" | "accepted" | "rejected" | "applied" | "expired";
+  rationale?: string | null;
+  proposal: Record<string, unknown>;
+}) {
+  const client = getSupabaseAdminClient();
+  const syncId = getTrainVaultSyncId();
+  const now = new Date().toISOString();
+
+  const { error } = await client.from("trainvault_v3_decisions").upsert(
+    {
+      sync_id: syncId,
+      decision_key: input.decisionKey.slice(0, 240),
+      decision_type: input.decisionType.slice(0, 80),
+      status: input.status ?? "proposed",
+      rationale: input.rationale?.slice(0, 2_000) ?? null,
+      proposal: input.proposal,
+      updated_at: now,
+    },
+    { onConflict: "sync_id,decision_key" },
+  );
+
+  if (error) {
+    throw new Error("Canonical decision audit write failed.");
+  }
+}
+
 export async function getCanonicalCloudSummary() {
   const syncId = getTrainVaultSyncId();
   const client = getSupabaseAdminClient();
 
-  const [latestRunResult, snapshotCountResult, entitiesResult] = await Promise.all([
+  const [latestRunResult, snapshotCountResult, entitiesResult, decisionCountResult] = await Promise.all([
     client
       .from("trainvault_v3_sync_runs")
       .select("created_at, fingerprint, entity_count")
@@ -78,9 +107,18 @@ export async function getCanonicalCloudSummary() {
       .select("entity_type, effective_date, data")
       .eq("sync_id", syncId)
       .limit(5_000),
+    client
+      .from("trainvault_v3_decisions")
+      .select("id", { count: "exact", head: true })
+      .eq("sync_id", syncId),
   ]);
 
-  if (latestRunResult.error || snapshotCountResult.error || entitiesResult.error) {
+  if (
+    latestRunResult.error ||
+    snapshotCountResult.error ||
+    entitiesResult.error ||
+    decisionCountResult.error
+  ) {
     throw new Error("Canonical TrainVault cloud summary is unavailable.");
   }
 
@@ -116,6 +154,7 @@ export async function getCanonicalCloudSummary() {
     lastSyncedAt: latestRun?.created_at ?? null,
     fingerprint: latestRun?.fingerprint ?? null,
     snapshotCount: snapshotCountResult.count ?? 0,
+    decisionCount: decisionCountResult.count ?? 0,
     entityCount,
     counts,
     latestRecoveryDate,

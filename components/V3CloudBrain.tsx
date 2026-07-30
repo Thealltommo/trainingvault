@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CloudCog, DatabaseZap, RefreshCw, ShieldCheck } from "lucide-react";
+import { BrainCircuit, CloudCog, DatabaseZap, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   captureCloudDeviceSnapshot,
   pushCloudDeviceSnapshot,
@@ -92,7 +92,7 @@ export default function V3CloudBrain({ compact = false }: { compact?: boolean })
               <h2 className="mt-1 text-2xl font-black uppercase sm:text-3xl">One athlete history.</h2>
               {!compact ? (
                 <p className="mt-2 max-w-2xl text-sm font-bold text-[var(--muted)]">
-                  Every cross-device sync now writes an append-only rollback snapshot and a queryable entity bank. The browser is a client; Supabase is the durable history.
+                  Every cross-device sync adds a rollback snapshot and upserts durable athlete evidence. The browser is the cockpit; Supabase retains the history.
                 </p>
               ) : null}
             </div>
@@ -119,9 +119,9 @@ export default function V3CloudBrain({ compact = false }: { compact?: boolean })
           <p className="mt-1 text-xs font-bold text-[var(--muted)]">Server-role only · browser access blocked</p>
         </div>
         <div className="border border-[var(--border)] bg-black/45 p-3">
-          <p className="tv-label">Current entities</p>
+          <p className="tv-label">Durable entities</p>
           <p className="mt-2 text-3xl font-black text-[var(--accent)]">{summary?.entityCount ?? "—"}</p>
-          <p className="text-xs font-bold uppercase text-[var(--muted)]">Queryable athlete records</p>
+          <p className="text-xs font-bold uppercase text-[var(--muted)]">Retained athlete evidence</p>
         </div>
         <div className="border border-[var(--border)] bg-black/45 p-3">
           <p className="tv-label">Rollback history</p>
@@ -152,6 +152,12 @@ export default function V3CloudBrain({ compact = false }: { compact?: boolean })
               )) : (
                 <span className="text-sm font-bold text-[var(--muted)]">Mirror this device once to seed the canonical bank.</span>
               )}
+              {(summary?.decisionCount ?? 0) > 0 ? (
+                <span className="inline-flex items-center gap-1 border border-[var(--border)] bg-black/50 px-2.5 py-1.5 text-xs font-black uppercase">
+                  <BrainCircuit className="h-3.5 w-3.5 text-[var(--accent)]" aria-hidden="true" />
+                  coach decisions · <span className="text-[var(--accent)]">{summary?.decisionCount}</span>
+                </span>
+              ) : null}
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 text-center">

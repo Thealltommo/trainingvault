@@ -36,6 +36,10 @@ function json(
   return NextResponse.json(body, init);
 }
 
+function fallbackDecisionKey(reason: string) {
+  return `coach:fallback:${reason}:${crypto.randomUUID()}`;
+}
+
 async function auditCoachDecision(input: {
   decisionKey: string;
   message: string;
@@ -102,8 +106,9 @@ export async function POST(request: NextRequest) {
 
   if (!apiKey) {
     const decision = createCoachFallback(parsed.data, "not_configured");
+    const decisionKey = fallbackDecisionKey("not-configured");
     await auditCoachDecision({
-      decisionKey: `coach:fallback:${Date.now()}`,
+      decisionKey,
       message: parsed.data.message,
       today: parsed.data.context.today,
       source: "fallback",
@@ -112,6 +117,7 @@ export async function POST(request: NextRequest) {
     return json({
       source: "fallback",
       configured: false,
+      decisionKey,
       decision,
     });
   }
@@ -141,8 +147,9 @@ export async function POST(request: NextRequest) {
 
     if (!response.output_parsed) {
       const decision = createCoachFallback(parsed.data, "invalid_response");
+      const decisionKey = `coach:${response.id}:fallback`;
       await auditCoachDecision({
-        decisionKey: `coach:${response.id}:fallback`,
+        decisionKey,
         message: parsed.data.message,
         today: parsed.data.context.today,
         source: "fallback",
@@ -151,13 +158,15 @@ export async function POST(request: NextRequest) {
       return json({
         source: "fallback",
         configured: true,
+        decisionKey,
         decision,
       });
     }
 
     const decision = sanitizeCoachDecision(response.output_parsed, parsed.data);
+    const decisionKey = `coach:${response.id}`;
     await auditCoachDecision({
-      decisionKey: `coach:${response.id}`,
+      decisionKey,
       message: parsed.data.message,
       today: parsed.data.context.today,
       source: "openai",
@@ -167,12 +176,14 @@ export async function POST(request: NextRequest) {
     return json({
       source: "openai",
       configured: true,
+      decisionKey,
       decision,
     });
   } catch {
     const decision = createCoachFallback(parsed.data, "temporarily_unavailable");
+    const decisionKey = fallbackDecisionKey("temporarily-unavailable");
     await auditCoachDecision({
-      decisionKey: `coach:fallback:${Date.now()}`,
+      decisionKey,
       message: parsed.data.message,
       today: parsed.data.context.today,
       source: "fallback",
@@ -181,6 +192,7 @@ export async function POST(request: NextRequest) {
     return json({
       source: "fallback",
       configured: true,
+      decisionKey,
       decision,
     });
   }

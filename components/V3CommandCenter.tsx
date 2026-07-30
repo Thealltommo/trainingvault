@@ -10,9 +10,11 @@ import {
   Gauge,
   Mountain,
   Route,
+  ShieldCheck,
   Watch,
 } from "lucide-react";
 import V3CloudBrain from "@/components/V3CloudBrain";
+import { deriveAdaptiveRunway } from "@/lib/adaptive-runway";
 import { assessDailyReadiness } from "@/lib/athlete";
 import {
   getCalendarSessions,
@@ -66,6 +68,16 @@ function recommendationCopy(recommendation: string, hasSession: boolean) {
   }
 }
 
+function proposalAction(input: {
+  kind: "select_variant" | "reschedule" | "protect";
+  variant: "adjusted" | "minimum" | null;
+  newDate: string | null;
+}) {
+  if (input.kind === "protect") return "Protect anchor";
+  if (input.kind === "select_variant") return `Use ${input.variant?.toUpperCase() ?? "variant"}`;
+  return input.newDate ? `Move → ${prettyDate(input.newDate)}` : "Review move";
+}
+
 export default function V3CommandCenter() {
   const [today] = useState(() => localDateKey(new Date()));
   const programme = useActiveProgrammeOptional();
@@ -104,6 +116,16 @@ export default function V3CommandCenter() {
           session.status !== "skipped",
       ),
     [sessions, today, sevenDayEnd],
+  );
+  const adaptive = useMemo(
+    () =>
+      deriveAdaptiveRunway({
+        today,
+        readiness: assessment?.recommendation ?? null,
+        sessions,
+        windowDays: 7,
+      }),
+    [today, assessment?.recommendation, sessions],
   );
 
   const todaySession = runway.find((session) => session.scheduledDate === today) ?? null;
@@ -196,6 +218,59 @@ export default function V3CommandCenter() {
             {garmin.activities.length} Garmin activities currently cached on this device.
           </div>
         </article>
+      </section>
+
+      <section className="tv-card overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--border)] bg-[linear-gradient(110deg,rgba(215,255,47,0.08),transparent_55%)] p-4 sm:p-5">
+          <div className="flex gap-3">
+            <ShieldCheck className="mt-1 h-6 w-6 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+            <div>
+              <p className="tv-label text-[var(--accent)]">Adaptive runway · deterministic</p>
+              <h2 className="mt-1 text-2xl font-black uppercase">{adaptive.headline}</h2>
+              <p className="mt-2 max-w-3xl text-sm font-bold text-[var(--muted)]">{adaptive.summary}</p>
+            </div>
+          </div>
+          <Link href="/coach" className="tv-button-ghost">
+            Ask Coach <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
+
+        <div className="grid gap-3 p-4 sm:p-5">
+          {adaptive.proposals.length > 0 ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              {adaptive.proposals.map((proposal) => (
+                <Link
+                  key={proposal.id}
+                  href={`/session/${encodeURIComponent(proposal.sessionId)}`}
+                  className="border border-[var(--border)] bg-black/45 p-3 transition-colors hover:border-[var(--accent)]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="tv-label">{proposal.kind.replaceAll("_", " ")}</span>
+                    <span className={`border px-2 py-1 text-[0.62rem] font-black uppercase ${proposal.severity === "strong" ? "border-amber-300 text-amber-200" : "border-[var(--accent)] text-[var(--accent)]"}`}>
+                      {proposalAction(proposal)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-black uppercase">{proposal.sessionTitle}</p>
+                  <p className="mt-1 text-xs font-bold text-[var(--muted)]">{proposal.reason}</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="border border-dashed border-[var(--border)] p-4 text-sm font-bold text-[var(--muted)]">
+              No reversible calendar or variant change is justified by the current deterministic rules.
+            </p>
+          )}
+
+          {adaptive.warnings.length > 0 ? (
+            <div className="grid gap-2">
+              {adaptive.warnings.map((warning) => (
+                <p key={warning} className="border-l-2 border-amber-300 pl-3 text-xs font-bold text-[var(--muted)]">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="tv-card p-4 sm:p-5">

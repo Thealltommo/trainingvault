@@ -29,6 +29,7 @@ from .models import (
     WorkoutScheduleResponse,
     WorkoutUploadResponse,
 )
+from .route_models import ActivityRouteResponse
 
 WorkoutId = Annotated[
     str,
@@ -37,6 +38,15 @@ WorkoutId = Annotated[
         max_length=32,
         pattern=r"^[1-9][0-9]*$",
         description="Garmin workout identifier",
+    ),
+]
+ActivityId = Annotated[
+    str,
+    Path(
+        min_length=1,
+        max_length=32,
+        pattern=r"^[1-9][0-9]*$",
+        description="Garmin activity identifier",
     ),
 ]
 
@@ -177,6 +187,17 @@ def create_app(
         garmin: GarminGateway = Depends(get_gateway),
     ) -> LatestActivityResponse:
         return garmin.latest_activity()
+
+    @api.get(
+        "/activities/{activity_id}/route",
+        response_model=ActivityRouteResponse,
+        dependencies=[Depends(require_bridge_token)],
+    )
+    def activity_route(
+        activity_id: ActivityId,
+        garmin: GarminGateway = Depends(get_gateway),
+    ) -> ActivityRouteResponse:
+        return garmin.activity_route(activity_id)
 
     @api.get(
         "/recovery/{snapshot_date}",

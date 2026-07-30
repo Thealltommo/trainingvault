@@ -1,3 +1,4 @@
+import type { StructuredRunningElement, StructuredRunningWorkout } from "@/lib/garmin/types";
 import type { AthleteSessionType } from "@/lib/planning-storage";
 import type { WorkoutIntensity } from "@/lib/types";
 
@@ -209,6 +210,87 @@ export function buildPlanStudioSessions(config: PlanStudioConfig): PlanStudioSes
   }
 
   return sessions.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
+}
+
+function openTimeStep(
+  phase: "warmup" | "work" | "recovery" | "cooldown",
+  minutes: number,
+  description: string,
+): Extract<StructuredRunningElement, { kind: "step" }> {
+  return {
+    kind: "step",
+    phase,
+    duration: { type: "time", seconds: Math.max(60, Math.round(minutes * 60)) },
+    target: { type: "open" },
+    description,
+  };
+}
+
+export function buildPlanStudioStructuredWorkout(
+  sessionId: string,
+  session: PlanStudioSession,
+): StructuredRunningWorkout | null {
+  if (session.type !== "run" && session.type !== "fell-trail" && session.type !== "race") {
+    return null;
+  }
+
+  const qualityTemplates: Record<string, { warmup: number; reps: number; work: number; recovery: number | "open"; cooldown: number; cue: string }> = {
+    "5K rhythm intervals": { warmup: 12, reps: 6, work: 3, recovery: 2, cooldown: 10, cue: "Controlled 5K–10K effort" },
+    "Threshold builder": { warmup: 12, reps: 3, work: 8, recovery: 2, cooldown: 10, cue: "Controlled threshold" },
+    "10K cruise intervals": { warmup: 12, reps: 5, work: 5, recovery: 1.5, cooldown: 10, cue: "Around 10K effort" },
+    "Threshold progression": { warmup: 12, reps: 2, work: 15, recovery: 3, cooldown: 10, cue: "Controlled threshold" },
+    "Threshold endurance": { warmup: 15, reps: 3, work: 10, recovery: 2, cooldown: 10, cue: "Threshold endurance" },
+    "Hill power repeats": { warmup: 15, reps: 8, work: 2, recovery: "open", cooldown: 10, cue: "Uphill strong" },
+    "Compromised threshold": { warmup: 12, reps: 4, work: 6, recovery: 2, cooldown: 10, cue: "Strong rolling effort" },
+    "Hybrid-safe quality run": { warmup: 12, reps: 5, work: 4, recovery: 2, cooldown: 10, cue: "Controlled hard" },
+  };
+
+  const normalizedTitle = session.title.replace(/^Recovery\s+/i, "");
+  const template = qualityTemplates[normalizedTitle];
+  let steps: StructuredRunningElement[];
+
+  if (template) {
+    const recoveryStep: Extract<StructuredRunningElement, { kind: "step" }> = template.recovery === "open"
+      ? {
+          kind: "step",
+          phase: "recovery",
+          duration: { type: "open" },
+          target: { type: "open" },
+          description: "Easy jog down; press lap when ready",
+        }
+      : openTimeStep("recovery", template.recovery, "Easy recovery");
+
+    steps = [
+      openTimeStep("warmup", template.warmup, "Easy warm-up"),
+      {
+        kind: "repeat",
+        repetitions: template.reps,
+        steps: [
+          openTimeStep("work", template.work, template.cue),
+          recoveryStep,
+        ],
+      },
+      openTimeStep("cooldown", template.cooldown, "Easy cool-down"),
+    ];
+  } else {
+    const warmup = session.role === "long" ? 10 : Math.min(10, Math.max(5, Math.round(session.durationMinutes * 0.2)));
+    const cooldown = session.role === "long" ? 5 : Math.min(10, Math.max(5, Math.round(session.durationMinutes * 0.15)));
+    const work = Math.max(5, session.durationMinutes - warmup - cooldown);
+    steps = [
+      openTimeStep("warmup", warmup, "Relaxed warm-up"),
+      openTimeStep("work", work, session.role === "long" ? "Controlled aerobic endurance" : "Conversational aerobic running"),
+      openTimeStep("cooldown", cooldown, "Easy finish"),
+    ];
+  }
+
+  return {
+    id: sessionId,
+    name: session.title.slice(0, 80),
+    date: session.date,
+    description: session.targetStimulus,
+    estimatedDurationSeconds: Math.round(session.durationMinutes * 60),
+    steps,
+  };
 }
 
 export function planStudioGoalLabel(goal: PlanStudioGoal) {

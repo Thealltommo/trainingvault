@@ -5,12 +5,14 @@ import { isAuthorizedRequest } from "@/lib/auth";
 import {
   coachDecisionSchema,
   coachRequestSchema,
+  type CoachDecision,
 } from "@/lib/coach-schema";
 import {
   createCoachFallback,
   sanitizeCoachDecision,
 } from "@/lib/coach";
 import { consumeCoachRateLimit } from "@/lib/coach-rate-limit";
+import { recordCanonicalDecision } from "@/lib/v3-canonical";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,6 +34,31 @@ function json(
   init?: { status?: number; headers?: HeadersInit },
 ) {
   return NextResponse.json(body, init);
+}
+
+async function auditCoachDecision(input: {
+  decisionKey: string;
+  message: string;
+  today: string;
+  source: "openai" | "fallback";
+  decision: CoachDecision;
+}) {
+  try {
+    await recordCanonicalDecision({
+      decisionKey: input.decisionKey,
+      decisionType: "coach_proposal",
+      status: "proposed",
+      rationale: input.decision.summary,
+      proposal: {
+        source: input.source,
+        message: input.message,
+        today: input.today,
+        decision: input.decision,
+      },
+    });
+  } catch {
+    // Audit is deliberately best-effort. A cloud-history wobble must not make Coach unavailable.
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -74,10 +101,18 @@ export async function POST(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!apiKey) {
+    const decision = createCoachFallback(parsed.data, "not_configured");
+    await auditCoachDecision({
+      decisionKey: `coach:fallback:${Date.now()}`,
+      message: parsed.data.message,
+      today: parsed.data.context.today,
+      source: "fallback",
+      decision,
+    });
     return json({
       source: "fallback",
       configured: false,
-      decision: createCoachFallback(parsed.data, "not_configured"),
+      decision,
     });
   }
 
@@ -105,24 +140,48 @@ export async function POST(request: NextRequest) {
     });
 
     if (!response.output_parsed) {
+      const decision = createCoachFallback(parsed.data, "invalid_response");
+      await auditCoachDecision({
+        decisionKey: `coach:${response.id}:fallback`,
+        message: parsed.data.message,
+        today: parsed.data.context.today,
+        source: "fallback",
+        decision,
+      });
       return json({
         source: "fallback",
         configured: true,
-        decision: createCoachFallback(parsed.data, "invalid_response"),
+        decision,
       });
     }
+
+    const decision = sanitizeCoachDecision(response.output_parsed, parsed.data);
+    await auditCoachDecision({
+      decisionKey: `coach:${response.id}`,
+      message: parsed.data.message,
+      today: parsed.data.context.today,
+      source: "openai",
+      decision,
+    });
 
     return json({
       source: "openai",
       configured: true,
-      decision: sanitizeCoachDecision(response.output_parsed, parsed.data),
+      decision,
     });
   } catch {
+    const decision = createCoachFallback(parsed.data, "temporarily_unavailable");
+    await auditCoachDecision({
+      decisionKey: `coach:fallback:${Date.now()}`,
+      message: parsed.data.message,
+      today: parsed.data.context.today,
+      source: "fallback",
+      decision,
+    });
     return json({
       source: "fallback",
       configured: true,
-      decision: createCoachFallback(parsed.data, "temporarily_unavailable"),
+      decision,
     });
   }
 }
-

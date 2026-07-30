@@ -134,9 +134,10 @@ function RouteTrace({ route }: { route: RouteResponse | null }) {
     const drawnHeight = latSpan * scale;
     const xOffset = (width - drawnWidth) / 2;
     const yOffset = (height - drawnHeight) / 2;
+    const bounds = route.bounds;
     const points = route.points.map((point) => ({
-      x: xOffset + (point.lon - route.bounds!.minLon) * scale,
-      y: yOffset + (route.bounds!.maxLat - point.lat) * scale,
+      x: xOffset + (point.lon - bounds.minLon) * scale,
+      y: yOffset + (bounds.maxLat - point.lat) * scale,
     }));
     return {
       path: points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" "),
@@ -181,7 +182,6 @@ export default function LatestSessionHero() {
   const garmin = useGarminLocalState();
   const logs = useSessionLogs();
   const [route, setRoute] = useState<RouteResponse | null>(null);
-  const [routeLoading, setRouteLoading] = useState(false);
 
   const latestGarmin = useMemo(() => {
     return [...garmin.activities].sort((a, b) => {
@@ -202,39 +202,29 @@ export default function LatestSessionHero() {
   const useGarmin = Boolean(latestGarmin && garminTime >= logTime);
   const activity = useGarmin ? latestGarmin?.activity ?? null : null;
   const log = !useGarmin ? latestLog : null;
+  const activityId = useGarmin ? latestGarmin?.activity.activityId ?? null : null;
+  const activeRoute = route && activityId && route.activityId === activityId ? route : null;
 
   useEffect(() => {
-    const activityId = latestGarmin?.activity.activityId;
-    if (!useGarmin || !activityId || !isMapActivity(latestGarmin)) {
-      setRoute(null);
-      return;
-    }
+    if (!useGarmin || !activityId || !isMapActivity(latestGarmin)) return;
 
     let cancelled = false;
-    setRouteLoading(true);
     void fetch(`/api/garmin/activities/${encodeURIComponent(activityId)}/route`, { cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) return null;
         return (await response.json()) as RouteResponse;
       })
       .then((data) => {
-        if (!cancelled) setRoute(data);
+        if (!cancelled && data) setRoute(data);
       })
-      .catch(() => {
-        if (!cancelled) setRoute(null);
-      })
-      .finally(() => {
-        if (!cancelled) setRouteLoading(false);
-      });
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
     };
-  }, [latestGarmin, useGarmin]);
+  }, [activityId, latestGarmin, useGarmin]);
 
-  if (!activity && !log) {
-    return null;
-  }
+  if (!activity && !log) return null;
 
   const title = activity?.title ?? log?.workoutTitle ?? "Latest session";
   const type = activityLabel(activity?.activityType ?? log?.workoutSessionType ?? log?.workoutCategory);
@@ -244,6 +234,7 @@ export default function LatestSessionHero() {
     : log?.actualDurationMinutes
       ? `${log.actualDurationMinutes} min`
       : "—";
+  const routeLoading = Boolean(activityId && isMapActivity(latestGarmin) && !activeRoute);
 
   return (
     <section className="tv-session-hero relative overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d0a] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
@@ -262,67 +253,22 @@ export default function LatestSessionHero() {
           <h2 className="mt-2 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-[-0.035em] sm:text-5xl">{title}</h2>
 
           <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="tv-metric-tile">
-              <Clock3 className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-              <span className="tv-label">Time</span>
-              <strong>{duration}</strong>
-            </div>
-            {activity?.distanceMeters ? (
-              <div className="tv-metric-tile">
-                <Route className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">Distance</span>
-                <strong>{(activity.distanceMeters / 1000).toFixed(1)} km</strong>
-              </div>
-            ) : null}
-            {activity?.averagePaceSecondsPerKm ? (
-              <div className="tv-metric-tile">
-                <Gauge className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">Pace</span>
-                <strong>{formatPace(activity.averagePaceSecondsPerKm)}</strong>
-              </div>
-            ) : null}
-            {activity?.averageHeartRateBpm ? (
-              <div className="tv-metric-tile">
-                <HeartPulse className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">Avg HR</span>
-                <strong>{Math.round(activity.averageHeartRateBpm)} bpm</strong>
-              </div>
-            ) : null}
-            {activity?.elevationGainMeters ? (
-              <div className="tv-metric-tile">
-                <Mountain className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">Climb</span>
-                <strong>{Math.round(activity.elevationGainMeters)} m</strong>
-              </div>
-            ) : null}
-            {log?.rpe ? (
-              <div className="tv-metric-tile">
-                <Activity className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">RPE</span>
-                <strong>{log.rpe}/10</strong>
-              </div>
-            ) : null}
-            {log?.score ? (
-              <div className="tv-metric-tile">
-                <Footprints className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-                <span className="tv-label">Score</span>
-                <strong>{log.score}</strong>
-              </div>
-            ) : null}
+            <div className="tv-metric-tile"><Clock3 className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Time</span><strong>{duration}</strong></div>
+            {activity?.distanceMeters ? <div className="tv-metric-tile"><Route className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Distance</span><strong>{(activity.distanceMeters / 1000).toFixed(1)} km</strong></div> : null}
+            {activity?.averagePaceSecondsPerKm ? <div className="tv-metric-tile"><Gauge className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Pace</span><strong>{formatPace(activity.averagePaceSecondsPerKm)}</strong></div> : null}
+            {activity?.averageHeartRateBpm ? <div className="tv-metric-tile"><HeartPulse className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Avg HR</span><strong>{Math.round(activity.averageHeartRateBpm)} bpm</strong></div> : null}
+            {activity?.elevationGainMeters ? <div className="tv-metric-tile"><Mountain className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Climb</span><strong>{Math.round(activity.elevationGainMeters)} m</strong></div> : null}
+            {log?.rpe ? <div className="tv-metric-tile"><Activity className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">RPE</span><strong>{log.rpe}/10</strong></div> : null}
+            {log?.score ? <div className="tv-metric-tile"><Footprints className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Score</span><strong>{log.score}</strong></div> : null}
           </div>
 
           <div className="mt-6 rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-center gap-2 text-[var(--accent)]">
-              <Sparkles className="h-4 w-4" aria-hidden="true" />
-              <span className="tv-label text-[var(--accent)]">Coach read</span>
-            </div>
+            <div className="flex items-center gap-2 text-[var(--accent)]"><Sparkles className="h-4 w-4" aria-hidden="true" /><span className="tv-label text-[var(--accent)]">Coach read</span></div>
             <p className="mt-2 text-sm font-bold leading-relaxed text-[#dedede]">{coachRead(latestGarmin, log)}</p>
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/log" className="tv-button-primary">
-              Review session <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-            </Link>
+            <Link href="/log" className="tv-button-primary">Review session <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
             <Link href="/coach" className="tv-button-ghost">Ask Coach</Link>
           </div>
         </div>
@@ -331,20 +277,14 @@ export default function LatestSessionHero() {
           {isMapActivity(latestGarmin) ? (
             <>
               <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                <div>
-                  <p className="tv-label text-[var(--accent)]">Route memory</p>
-                  <p className="mt-1 text-sm font-black uppercase">What the watch saw</p>
-                </div>
-                <span className="text-[0.65rem] font-black uppercase text-[var(--muted)]">{routeLoading ? "Loading GPS…" : route?.points.length ? `${route.points.length} points` : "Private"}</span>
+                <div><p className="tv-label text-[var(--accent)]">Route memory</p><p className="mt-1 text-sm font-black uppercase">What the watch saw</p></div>
+                <span className="text-[0.65rem] font-black uppercase text-[var(--muted)]">{routeLoading ? "Loading GPS…" : activeRoute?.points.length ? `${activeRoute.points.length} points` : "Private"}</span>
               </div>
-              <RouteTrace route={route} />
+              <RouteTrace route={activeRoute} />
             </>
           ) : (
             <div className="grid h-full min-h-72 content-between rounded-xl border border-white/10 bg-[linear-gradient(145deg,rgba(215,255,47,0.08),transparent_48%),#080808] p-6">
-              <div>
-                <p className="tv-label text-[var(--accent)]">Session fingerprint</p>
-                <h3 className="mt-2 text-3xl font-black uppercase leading-none">Work done.<br />Context retained.</h3>
-              </div>
+              <div><p className="tv-label text-[var(--accent)]">Session fingerprint</p><h3 className="mt-2 text-3xl font-black uppercase leading-none">Work done.<br />Context retained.</h3></div>
               <div className="grid gap-2">
                 {log?.result ? <p className="border-l-2 border-[var(--accent)] pl-3 text-sm font-bold">{log.result}</p> : null}
                 {log?.notes ? <p className="text-sm font-bold text-[var(--muted)]">{log.notes}</p> : null}

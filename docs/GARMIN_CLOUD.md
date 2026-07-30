@@ -110,7 +110,7 @@ GARMIN_BRIDGE_API_KEY=<same-value-as-GARMIN_BRIDGE_API_TOKEN>
 
 Never prefix them with `NEXT_PUBLIC_`.
 
-Redeploy the Athlete OS preview and open **Settings**. Garmin should report live connectivity.
+After changing Preview environment variables, trigger a fresh `feature/athlete-os-v0` deployment; existing preview deployments keep the environment snapshot they were built with. Open **Settings** on the new deployment and confirm Garmin reports live connectivity before using phone Garmin actions.
 
 ## 7. Establish cross-device TrainVault state
 

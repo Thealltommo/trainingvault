@@ -35,4 +35,21 @@ describe("Plan Studio", () => {
     expect(longRuns).toHaveLength(8);
     expect(longRuns.every((session) => session.type === "fell-trail")).toBe(true);
   });
+
+  it("never schedules before the selected start or after an optional target date", () => {
+    const sessions = buildPlanStudioSessions({
+      goal: "10k",
+      startDate: "2026-08-06",
+      targetDate: "2026-08-20",
+      weeks: 8,
+      runDays: [0, 2, 4, 6],
+      longRunDay: 5,
+      hawkeyeDays: [1],
+    });
+
+    expect(sessions.length).toBeGreaterThan(0);
+    expect(sessions.every((session) => session.date >= "2026-08-06")).toBe(true);
+    expect(sessions.every((session) => session.date <= "2026-08-20")).toBe(true);
+    expect(sessions.some((session) => session.role === "long")).toBe(true);
+  });
 });

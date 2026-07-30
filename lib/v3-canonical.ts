@@ -68,6 +68,15 @@ export async function recordCanonicalDecision(input: {
   const syncId = getTrainVaultSyncId();
   const now = new Date().toISOString();
 
+  const { error: athleteError } = await client.from("trainvault_v3_athletes").upsert(
+    { sync_id: syncId, updated_at: now },
+    { onConflict: "sync_id" },
+  );
+
+  if (athleteError) {
+    throw new Error("Canonical athlete identity write failed.");
+  }
+
   const { error } = await client.from("trainvault_v3_decisions").upsert(
     {
       sync_id: syncId,

@@ -113,7 +113,7 @@ export async function getCanonicalCloudSummary() {
       .eq("sync_id", syncId),
     client
       .from("trainvault_v3_entities")
-      .select("entity_type, effective_date, data")
+      .select("entity_type, effective_date")
       .eq("sync_id", syncId)
       .limit(5_000),
     client

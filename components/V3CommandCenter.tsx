@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -67,7 +67,7 @@ function recommendationCopy(recommendation: string, hasSession: boolean) {
 }
 
 export default function V3CommandCenter() {
-  const [today, setToday] = useState("");
+  const [today] = useState(() => localDateKey(new Date()));
   const programme = useActiveProgrammeOptional();
   const manualSessions = useManualSessions();
   const logs = useSessionLogs();
@@ -75,10 +75,6 @@ export default function V3CommandCenter() {
   const lifecycle = useSessionLifecycleOverrides();
   const garmin = useGarminLocalState();
   const recovery = useDailyRecovery(today);
-
-  useEffect(() => {
-    setToday(localDateKey(new Date()));
-  }, []);
 
   const sessions = useMemo(
     () =>
@@ -98,17 +94,15 @@ export default function V3CommandCenter() {
     [recovery],
   );
 
-  const sevenDayEnd = today ? addDays(today, 6) : "";
+  const sevenDayEnd = addDays(today, 6);
   const runway = useMemo(
     () =>
-      today
-        ? sessions.filter(
-            (session) =>
-              session.scheduledDate >= today &&
-              session.scheduledDate <= sevenDayEnd &&
-              session.status !== "skipped",
-          )
-        : [],
+      sessions.filter(
+        (session) =>
+          session.scheduledDate >= today &&
+          session.scheduledDate <= sevenDayEnd &&
+          session.status !== "skipped",
+      ),
     [sessions, today, sevenDayEnd],
   );
 
@@ -123,10 +117,6 @@ export default function V3CommandCenter() {
     ["run", "fell-trail", "race"].includes(session.type),
   ).length;
   const completedThisWeek = runway.filter((session) => session.status === "completed").length;
-
-  if (!today) {
-    return <div className="tv-card p-5 text-sm font-bold text-[var(--muted)]">Loading athlete command state…</div>;
-  }
 
   return (
     <div className="grid gap-5">

@@ -13,6 +13,7 @@ type V3Summary = {
   lastSyncedAt: string | null;
   fingerprint: string | null;
   snapshotCount: number;
+  decisionCount?: number;
   entityCount: number;
   counts: Record<string, number>;
   latestRecoveryDate: string | null;
@@ -53,7 +54,10 @@ export default function V3CloudBrain({ compact = false }: { compact?: boolean })
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   async function syncNow() {

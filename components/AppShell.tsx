@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Gauge, Settings } from "lucide-react";
+import { ArrowRight, Dumbbell, Gauge, Settings, Sparkles } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
 import LatestSessionHero from "./LatestSessionHero";
@@ -16,6 +16,7 @@ export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isLogin = pathname.startsWith("/login");
   const showLatestSession = pathname === "/" || pathname.startsWith("/command");
+  const showPlanStudioPrompt = pathname === "/plan";
 
   if (isLogin) {
     return <>{children}</>;
@@ -110,6 +111,20 @@ export default function AppShell({ children }: AppShellProps) {
 
       <main className="min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-64 md:pb-8">
         <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 md:px-6 md:py-8">
+          {showPlanStudioPrompt ? (
+            <Link href="/plan/build" className="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-[rgba(215,255,47,0.3)] bg-[linear-gradient(110deg,rgba(215,255,47,0.12),rgba(215,255,47,0.025)_55%,transparent)] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.2)] transition-transform hover:-translate-y-0.5 sm:p-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[var(--accent)] text-black">
+                  <Sparkles className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="tv-label text-[var(--accent)]">Plan Studio</p>
+                  <p className="mt-1 text-sm font-black uppercase sm:text-base">Build a goal-led block around your real week</p>
+                </div>
+              </div>
+              <ArrowRight className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+            </Link>
+          ) : null}
           {showLatestSession ? <div className="mb-5"><LatestSessionHero /></div> : null}
           {children}
         </div>

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Settings } from "lucide-react";
+import { Dumbbell, Gauge, Settings } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
 
@@ -61,7 +61,7 @@ export default function AppShell({ children }: AppShellProps) {
             Private · adaptive · evidence-led
           </p>
           <p className="mt-1 text-[0.65rem] font-bold uppercase text-[var(--muted)]">
-            Local-first · cross-device cloud handoff
+            Canonical cloud · remote Garmin · rollback history
           </p>
         </div>
       </aside>
@@ -78,18 +78,32 @@ export default function AppShell({ children }: AppShellProps) {
             </span>
           </span>
         </Link>
-        <Link
-          href="/settings"
-          aria-label="Settings"
-          aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-          className={`grid h-10 w-10 place-items-center rounded-md border ${
-            pathname.startsWith("/settings")
-              ? "border-[var(--accent)] text-[var(--accent)]"
-              : "border-[var(--border)] text-[var(--muted)]"
-          }`}
-        >
-          <Settings className="h-5 w-5" aria-hidden="true" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/command"
+            aria-label="Command center"
+            aria-current={pathname.startsWith("/command") ? "page" : undefined}
+            className={`grid h-10 w-10 place-items-center rounded-md border ${
+              pathname.startsWith("/command")
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--muted)]"
+            }`}
+          >
+            <Gauge className="h-5 w-5" aria-hidden="true" />
+          </Link>
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+            className={`grid h-10 w-10 place-items-center rounded-md border ${
+              pathname.startsWith("/settings")
+                ? "border-[var(--accent)] text-[var(--accent)]"
+                : "border-[var(--border)] text-[var(--muted)]"
+            }`}
+          >
+            <Settings className="h-5 w-5" aria-hidden="true" />
+          </Link>
+        </div>
       </header>
 
       <main className="min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-64 md:pb-8">

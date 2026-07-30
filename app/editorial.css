@@ -1,0 +1,37 @@
+/* Final editorial pass: page titles read like product UI; telemetry still reads like instrumentation. */
+main h1.uppercase,
+main h2.uppercase,
+main h3.uppercase {
+  text-transform: none;
+}
+
+main h1 {
+  font-weight: 780;
+  letter-spacing: -0.052em;
+}
+
+main h2 {
+  font-weight: 770;
+  letter-spacing: -0.038em;
+}
+
+main h3 {
+  font-weight: 740;
+  letter-spacing: -0.028em;
+}
+
+main h1 + p,
+main h2 + p,
+main h3 + p {
+  text-wrap: pretty;
+}
+
+main p {
+  text-wrap: pretty;
+}
+
+@media (max-width: 640px) {
+  main h1 {
+    letter-spacing: -0.045em;
+  }
+}

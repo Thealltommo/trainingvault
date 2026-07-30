@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChartNoAxesCombined,
   ClipboardList,
+  Gauge,
   Settings,
   SunMedium,
   type LucideIcon,
@@ -25,6 +26,12 @@ export const navItems: NavItem[] = [
     href: "/",
     icon: SunMedium,
     match: (pathname) => pathname === "/",
+  },
+  {
+    label: "Command",
+    href: "/command",
+    icon: Gauge,
+    match: (pathname) => pathname.startsWith("/command"),
   },
   {
     label: "Plan",
@@ -63,7 +70,9 @@ export const navItems: NavItem[] = [
   },
 ];
 
-const mobileNavItems = navItems.filter((item) => item.href !== "/settings");
+const mobileNavItems = navItems.filter(
+  (item) => item.href !== "/settings" && item.href !== "/command",
+);
 
 export function isRouteActive(item: NavItem, pathname: string) {
   return item.match(pathname);

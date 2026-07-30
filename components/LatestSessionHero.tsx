@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Clock3,
+  Flame,
   Footprints,
   Gauge,
   HeartPulse,
@@ -13,6 +14,8 @@ import {
   Mountain,
   Route,
   Sparkles,
+  Timer,
+  Zap,
 } from "lucide-react";
 import { useGarminLocalState, type GarminStoredActivity } from "@/lib/garmin-storage";
 import { useSessionLogs } from "@/lib/storage";
@@ -119,12 +122,18 @@ function coachRead(record: GarminStoredActivity | null, log: SessionLog | null) 
   return "Complete a session or sync Garmin to unlock the latest-session review.";
 }
 
+function samplePoints<T>(points: T[], maximum = 360) {
+  if (points.length <= maximum) return points;
+  const stride = Math.ceil(points.length / maximum);
+  return points.filter((_, index) => index % stride === 0 || index === points.length - 1);
+}
+
 function RouteTrace({ route }: { route: RouteResponse | null }) {
   const geometry = useMemo(() => {
     if (!route || route.points.length < 2 || !route.bounds) return null;
-    const width = 720;
-    const height = 300;
-    const pad = 26;
+    const width = 840;
+    const height = 390;
+    const pad = 44;
     const lonSpan = Math.max(0.000001, route.bounds.maxLon - route.bounds.minLon);
     const latSpan = Math.max(0.000001, route.bounds.maxLat - route.bounds.minLat);
     const usableWidth = width - pad * 2;
@@ -135,7 +144,7 @@ function RouteTrace({ route }: { route: RouteResponse | null }) {
     const xOffset = (width - drawnWidth) / 2;
     const yOffset = (height - drawnHeight) / 2;
     const bounds = route.bounds;
-    const points = route.points.map((point) => ({
+    const points = samplePoints(route.points, 520).map((point) => ({
       x: xOffset + (point.lon - bounds.minLon) * scale,
       y: yOffset + (bounds.maxLat - point.lat) * scale,
     }));
@@ -150,30 +159,97 @@ function RouteTrace({ route }: { route: RouteResponse | null }) {
 
   if (!geometry) {
     return (
-      <div className="grid min-h-56 place-items-center rounded-xl border border-dashed border-white/10 bg-black/30 px-6 text-center">
+      <div className="grid min-h-[22rem] place-items-center px-6 text-center">
         <div>
           <MapPinned className="mx-auto h-7 w-7 text-[var(--accent)]" aria-hidden="true" />
-          <p className="mt-3 text-sm font-black uppercase">Route trace unavailable</p>
-          <p className="mt-1 text-xs font-bold text-[var(--muted)]">GPS activities will draw here without sending your route to a third-party map provider.</p>
+          <p className="mt-3 text-sm font-[800]">Route trace unavailable</p>
+          <p className="mt-1 max-w-sm text-xs font-semibold leading-relaxed text-[var(--muted)]">
+            GPS activities draw here directly from Garmin without sending the route to a third-party map provider.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-[#080b08] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-      <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(215,255,47,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(215,255,47,0.05)_1px,transparent_1px)] [background-size:34px_34px]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(215,255,47,0.12),transparent_32%),linear-gradient(180deg,transparent,rgba(0,0,0,0.42))]" />
-      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="relative h-64 w-full" role="img" aria-label="Private GPS route trace">
-        <path d={geometry.path} fill="none" stroke="rgba(215,255,47,0.18)" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={geometry.path} fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={geometry.start.x} cy={geometry.start.y} r="7" fill="#050505" stroke="var(--accent)" strokeWidth="4" />
-        <circle cx={geometry.end.x} cy={geometry.end.y} r="7" fill="var(--accent)" stroke="#050505" strokeWidth="4" />
-      </svg>
-      <div className="absolute bottom-3 left-3 flex items-center gap-2 rounded-full border border-white/10 bg-black/70 px-3 py-1.5 text-[0.65rem] font-black uppercase tracking-wide text-[var(--muted)] backdrop-blur">
-        <MapPinned className="h-3.5 w-3.5 text-[var(--accent)]" aria-hidden="true" />
-        Private GPS trace · no map tiles
+    <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="relative h-[22rem] w-full sm:h-[25rem]" role="img" aria-label="Private GPS route trace">
+      <defs>
+        <linearGradient id="tv-route-gradient" x1="0%" y1="10%" x2="100%" y2="90%">
+          <stop offset="0%" stopColor="#f3ffb1" />
+          <stop offset="42%" stopColor="#d7ff2f" />
+          <stop offset="100%" stopColor="#9cd400" />
+        </linearGradient>
+        <filter id="tv-route-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <path d={geometry.path} fill="none" stroke="rgba(215,255,47,0.1)" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={geometry.path} fill="none" stroke="url(#tv-route-gradient)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#tv-route-glow)" />
+      <circle cx={geometry.start.x} cy={geometry.start.y} r="9" fill="#071007" stroke="#d7ff2f" strokeWidth="4" />
+      <circle cx={geometry.start.x} cy={geometry.start.y} r="2.7" fill="#d7ff2f" />
+      <circle cx={geometry.end.x} cy={geometry.end.y} r="9" fill="#d7ff2f" stroke="#071007" strokeWidth="4" />
+      <text x={Math.min(geometry.width - 78, geometry.start.x + 15)} y={Math.max(24, geometry.start.y - 14)} fill="#aab3a5" fontSize="12" fontWeight="800" letterSpacing="1.5">START</text>
+      <text x={Math.min(geometry.width - 88, geometry.end.x + 15)} y={Math.max(24, geometry.end.y - 14)} fill="#d7ff2f" fontSize="12" fontWeight="800" letterSpacing="1.5">FINISH</text>
+    </svg>
+  );
+}
+
+function ElevationProfile({ route }: { route: RouteResponse | null }) {
+  const geometry = useMemo(() => {
+    if (!route) return null;
+    const elevations = samplePoints(
+      route.points.filter((point): point is RoutePoint & { elevationMeters: number } => Number.isFinite(point.elevationMeters)),
+      320,
+    );
+    if (elevations.length < 2) return null;
+
+    const values = elevations.map((point) => point.elevationMeters);
+    const minimum = Math.min(...values);
+    const maximum = Math.max(...values);
+    const span = Math.max(1, maximum - minimum);
+    const width = 760;
+    const height = 96;
+    const padY = 9;
+    const usableHeight = height - padY * 2;
+    const points = elevations.map((point, index) => ({
+      x: (index / (elevations.length - 1)) * width,
+      y: padY + (1 - (point.elevationMeters - minimum) / span) * usableHeight,
+    }));
+    const line = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+    const area = `${line} L${width},${height} L0,${height} Z`;
+
+    return { line, area, width, height, minimum, maximum };
+  }, [route]);
+
+  if (!geometry) return null;
+
+  return (
+    <div className="tv-elevation-panel">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div>
+          <p className="tv-label text-[var(--accent)]">Elevation profile</p>
+          <p className="mt-1 text-[0.68rem] font-semibold text-[var(--muted)]">Terrain shape from recorded GPS altitude</p>
+        </div>
+        <div className="text-right text-[0.62rem] font-bold text-[var(--muted)]">
+          <span>{Math.round(geometry.minimum)} m</span>
+          <span className="mx-1.5 text-[var(--quiet)]">→</span>
+          <span className="text-[var(--text)]">{Math.round(geometry.maximum)} m</span>
+        </div>
       </div>
+      <svg viewBox={`0 0 ${geometry.width} ${geometry.height}`} className="h-20 w-full" aria-label="Elevation profile">
+        <defs>
+          <linearGradient id="tv-elevation-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(215,255,47,0.22)" />
+            <stop offset="100%" stopColor="rgba(215,255,47,0.01)" />
+          </linearGradient>
+        </defs>
+        <path d={geometry.area} fill="url(#tv-elevation-fill)" />
+        <path d={geometry.line} fill="none" stroke="#d7ff2f" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     </div>
   );
 }
@@ -235,24 +311,34 @@ export default function LatestSessionHero() {
       ? `${log.actualDurationMinutes} min`
       : "—";
   const routeLoading = Boolean(activityId && isMapActivity(latestGarmin) && !activeRoute);
+  const secondaryMetrics = activity
+    ? [
+        { label: "Moving", value: formatDuration(activity.movingDurationSeconds), icon: Timer },
+        { label: "Max HR", value: activity.maxHeartRateBpm ? `${Math.round(activity.maxHeartRateBpm)} bpm` : "—", icon: HeartPulse },
+        { label: "Cadence", value: activity.averageCadenceSpm ? `${Math.round(activity.averageCadenceSpm)} spm` : "—", icon: Activity },
+        { label: "Energy", value: activity.calories ? `${Math.round(activity.calories)} kcal` : "—", icon: Flame },
+        { label: "Aerobic TE", value: activity.aerobicTrainingEffect != null ? activity.aerobicTrainingEffect.toFixed(1) : "—", icon: Zap },
+        { label: "Anaerobic TE", value: activity.anaerobicTrainingEffect != null ? activity.anaerobicTrainingEffect.toFixed(1) : "—", icon: Gauge },
+      ]
+    : [];
 
   return (
-    <section className="tv-session-hero relative overflow-hidden rounded-2xl border border-white/10 bg-[#0b0d0a] shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_0%,rgba(215,255,47,0.15),transparent_30%),radial-gradient(circle_at_90%_100%,rgba(215,255,47,0.07),transparent_32%)]" />
-      <div className="relative grid gap-0 xl:grid-cols-[0.95fr_1.05fr]">
-        <div className="p-5 sm:p-7 lg:p-8">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(215,255,47,0.34)] bg-[rgba(215,255,47,0.09)] px-3 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.14em] text-[var(--accent)]">
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              Latest session
-            </span>
-            <span className="text-xs font-black uppercase text-[var(--muted)]">{formatDate(completedAt)}</span>
+    <section className="tv-session-hero relative overflow-hidden rounded-[1.35rem] border">
+      <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(215,255,47,0.7),transparent)] opacity-60" />
+      <div className="relative grid min-w-0 gap-0 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <div className="min-w-0 p-5 sm:p-7 lg:p-8 xl:p-9">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="tv-session-kicker"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Latest session</span>
+            <span className="h-1 w-1 rounded-full bg-[var(--quiet)]" />
+            <span className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted)]">{formatDate(completedAt)}</span>
           </div>
 
-          <p className="mt-7 text-xs font-black uppercase tracking-[0.16em] text-[var(--accent)]">{type}</p>
-          <h2 className="mt-2 max-w-3xl text-4xl font-black uppercase leading-[0.9] tracking-[-0.035em] sm:text-5xl">{title}</h2>
+          <div className="mt-8">
+            <p className="text-[0.7rem] font-[820] uppercase tracking-[0.18em] text-[var(--accent)]">{type}</p>
+            <h2 className="tv-session-title mt-3">{title}</h2>
+          </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="tv-metric-strip mt-7">
             <div className="tv-metric-tile"><Clock3 className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Time</span><strong>{duration}</strong></div>
             {activity?.distanceMeters ? <div className="tv-metric-tile"><Route className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Distance</span><strong>{(activity.distanceMeters / 1000).toFixed(1)} km</strong></div> : null}
             {activity?.averagePaceSecondsPerKm ? <div className="tv-metric-tile"><Gauge className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Pace</span><strong>{formatPace(activity.averagePaceSecondsPerKm)}</strong></div> : null}
@@ -262,33 +348,74 @@ export default function LatestSessionHero() {
             {log?.score ? <div className="tv-metric-tile"><Footprints className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" /><span className="tv-label">Score</span><strong>{log.score}</strong></div> : null}
           </div>
 
-          <div className="mt-6 rounded-xl border border-white/10 bg-black/40 p-4">
-            <div className="flex items-center gap-2 text-[var(--accent)]"><Sparkles className="h-4 w-4" aria-hidden="true" /><span className="tv-label text-[var(--accent)]">Coach read</span></div>
-            <p className="mt-2 text-sm font-bold leading-relaxed text-[#dedede]">{coachRead(latestGarmin, log)}</p>
+          <div className="tv-coach-note mt-7">
+            <p className="tv-label text-[var(--accent)]">Coach read</p>
+            <p className="mt-2 max-w-xl text-sm font-semibold leading-[1.7] text-[#d9ded5]">{coachRead(latestGarmin, log)}</p>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-2.5">
             <Link href="/log" className="tv-button-primary">Review session <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
             <Link href="/coach" className="tv-button-ghost">Ask Coach</Link>
           </div>
         </div>
 
-        <div className="border-t border-white/10 p-4 sm:p-5 xl:border-l xl:border-t-0">
+        <div className="tv-route-panel min-w-0 p-4 sm:p-5 lg:p-6 xl:p-7">
           {isMapActivity(latestGarmin) ? (
-            <>
-              <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                <div><p className="tv-label text-[var(--accent)]">Route memory</p><p className="mt-1 text-sm font-black uppercase">What the watch saw</p></div>
-                <span className="text-[0.65rem] font-black uppercase text-[var(--muted)]">{routeLoading ? "Loading GPS…" : activeRoute?.points.length ? `${activeRoute.points.length} points` : "Private"}</span>
+            <div className="grid h-full min-w-0 content-start gap-3">
+              <div className="flex flex-wrap items-end justify-between gap-3 px-1 pb-1">
+                <div>
+                  <p className="tv-label text-[var(--accent)]">Route memory</p>
+                  <h3 className="mt-1.5 text-xl font-[780] tracking-[-0.03em]">The shape of the work</h3>
+                </div>
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <span className="tv-route-pill"><span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" /> Garmin direct</span>
+                  <span className="tv-route-pill">{routeLoading ? "Loading GPS" : activeRoute?.points.length ? `${activeRoute.points.length} points` : "Private GPS"}</span>
+                </div>
               </div>
-              <RouteTrace route={activeRoute} />
-            </>
+
+              <div className="tv-route-canvas">
+                <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-1.5 sm:left-4 sm:top-4">
+                  {activity?.distanceMeters ? <span className="tv-route-pill"><Route className="h-3 w-3 text-[var(--accent)]" /> {(activity.distanceMeters / 1000).toFixed(1)} km</span> : null}
+                  {activity?.elevationGainMeters ? <span className="tv-route-pill"><Mountain className="h-3 w-3 text-[var(--accent)]" /> +{Math.round(activity.elevationGainMeters)} m</span> : null}
+                </div>
+                <div className="pointer-events-none absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
+                  <span className="tv-route-pill"><MapPinned className="h-3 w-3 text-[var(--accent)]" /> Private trace</span>
+                </div>
+                <RouteTrace route={activeRoute} />
+                <div className="pointer-events-none absolute bottom-3 left-3 z-10 sm:bottom-4 sm:left-4">
+                  <span className="tv-route-pill">No third-party map tiles</span>
+                </div>
+              </div>
+
+              <ElevationProfile route={activeRoute} />
+
+              {secondaryMetrics.length > 0 ? (
+                <div className="tv-route-stat-grid overflow-hidden rounded-[0.85rem]">
+                  {secondaryMetrics.map((metric) => {
+                    const Icon = metric.icon;
+                    return (
+                      <div key={metric.label} className="tv-route-stat">
+                        <div className="flex items-center gap-1.5">
+                          <Icon className="h-3.5 w-3.5 text-[var(--accent)]" aria-hidden="true" />
+                          <span>{metric.label}</span>
+                        </div>
+                        <strong>{metric.value}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           ) : (
-            <div className="grid h-full min-h-72 content-between rounded-xl border border-white/10 bg-[linear-gradient(145deg,rgba(215,255,47,0.08),transparent_48%),#080808] p-6">
-              <div><p className="tv-label text-[var(--accent)]">Session fingerprint</p><h3 className="mt-2 text-3xl font-black uppercase leading-none">Work done.<br />Context retained.</h3></div>
-              <div className="grid gap-2">
-                {log?.result ? <p className="border-l-2 border-[var(--accent)] pl-3 text-sm font-bold">{log.result}</p> : null}
-                {log?.notes ? <p className="text-sm font-bold text-[var(--muted)]">{log.notes}</p> : null}
-                <p className="text-xs font-bold text-[var(--muted)]">Strength, hybrid and CrossFit sessions stay human-readable instead of being forced into fake GPS-style metrics.</p>
+            <div className="grid h-full min-h-[30rem] content-between rounded-2xl border border-white/[0.08] bg-[linear-gradient(145deg,rgba(215,255,47,0.055),transparent_48%),#080b08] p-6 sm:p-8">
+              <div>
+                <p className="tv-label text-[var(--accent)]">Session fingerprint</p>
+                <h3 className="mt-3 max-w-sm text-4xl font-[780] leading-[0.96] tracking-[-0.045em]">Work done. Context retained.</h3>
+              </div>
+              <div className="grid gap-3">
+                {log?.result ? <p className="border-l-2 border-[var(--accent)] pl-3 text-sm font-semibold">{log.result}</p> : null}
+                {log?.notes ? <p className="text-sm font-semibold leading-relaxed text-[var(--muted)]">{log.notes}</p> : null}
+                <p className="text-xs font-semibold leading-relaxed text-[var(--quiet)]">Strength, hybrid and CrossFit sessions stay human-readable instead of being forced into fake GPS-style metrics.</p>
               </div>
             </div>
           )}

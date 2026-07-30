@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPlanStudioSessions } from "@/lib/plan-studio";
+import {
+  buildPlanStudioSessions,
+  buildPlanStudioStructuredWorkout,
+} from "@/lib/plan-studio";
 
 describe("Plan Studio", () => {
   it("builds a bounded hybrid-aware block with recovery weeks", () => {
@@ -51,5 +54,24 @@ describe("Plan Studio", () => {
     expect(sessions.every((session) => session.date >= "2026-08-06")).toBe(true);
     expect(sessions.every((session) => session.date <= "2026-08-20")).toBe(true);
     expect(sessions.some((session) => session.role === "long")).toBe(true);
+  });
+
+  it("converts generated quality runs into explicit Garmin-safe structure", () => {
+    const sessions = buildPlanStudioSessions({
+      goal: "5k",
+      startDate: "2026-08-03",
+      weeks: 8,
+      runDays: [1, 3, 6],
+      longRunDay: 6,
+      hawkeyeDays: [],
+    });
+    const quality = sessions.find((session) => session.role === "quality");
+    expect(quality).toBeTruthy();
+
+    const structured = buildPlanStudioStructuredWorkout("manual-test", quality!);
+    expect(structured?.id).toBe("manual-test");
+    expect(structured?.date).toBe(quality?.date);
+    expect(structured?.steps[0]).toMatchObject({ kind: "step", phase: "warmup" });
+    expect(structured?.steps.some((element) => element.kind === "repeat")).toBe(true);
   });
 });

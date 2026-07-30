@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Dumbbell, Gauge, Settings } from "lucide-react";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
+import LatestSessionHero from "./LatestSessionHero";
 
 type AppShellProps = {
   children: ReactNode;
@@ -14,6 +15,7 @@ type AppShellProps = {
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isLogin = pathname.startsWith("/login");
+  const showLatestSession = pathname === "/" || pathname.startsWith("/command");
 
   if (isLogin) {
     return <>{children}</>;
@@ -24,7 +26,7 @@ export default function AppShell({ children }: AppShellProps) {
       <CloudDeviceSync />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-[var(--border)] bg-[#050505]/95 px-4 py-5 md:flex md:flex-col">
         <Link href="/" className="mb-8 flex min-h-11 items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-md bg-[var(--accent)] text-black">
+          <span className="grid h-11 w-11 place-items-center rounded-md bg-[var(--accent)] text-black shadow-[0_0_32px_rgba(215,255,47,0.18)]">
             <Dumbbell className="h-6 w-6" strokeWidth={2.5} aria-hidden="true" />
           </span>
           <span>
@@ -43,9 +45,9 @@ export default function AppShell({ children }: AppShellProps) {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-11 items-center gap-3 rounded-md border px-3 text-sm font-black uppercase transition-colors ${
+                className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 text-sm font-black uppercase transition-all ${
                   active
-                    ? "border-[var(--accent)] bg-[rgba(215,255,47,0.12)] text-[var(--accent)]"
+                    ? "border-[var(--accent)] bg-[rgba(215,255,47,0.12)] text-[var(--accent)] shadow-[0_8px_30px_rgba(0,0,0,0.25)]"
                     : "border-transparent text-[var(--muted)] hover:border-[var(--border)] hover:bg-[var(--surface)] hover:text-[var(--text)]"
                 }`}
               >
@@ -66,9 +68,9 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#050505]/95 px-4 backdrop-blur md:hidden">
+      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#050505]/90 px-4 backdrop-blur-xl md:hidden">
         <Link href="/" className="flex min-h-11 items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded bg-[var(--accent)] text-black">
+          <span className="grid h-8 w-8 place-items-center rounded bg-[var(--accent)] text-black shadow-[0_0_24px_rgba(215,255,47,0.18)]">
             <Dumbbell className="h-4.5 w-4.5" strokeWidth={2.6} aria-hidden="true" />
           </span>
           <span>
@@ -83,9 +85,9 @@ export default function AppShell({ children }: AppShellProps) {
             href="/command"
             aria-label="Command center"
             aria-current={pathname.startsWith("/command") ? "page" : undefined}
-            className={`grid h-10 w-10 place-items-center rounded-md border ${
+            className={`grid h-10 w-10 place-items-center rounded-lg border ${
               pathname.startsWith("/command")
-                ? "border-[var(--accent)] text-[var(--accent)]"
+                ? "border-[var(--accent)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
                 : "border-[var(--border)] text-[var(--muted)]"
             }`}
           >
@@ -95,9 +97,9 @@ export default function AppShell({ children }: AppShellProps) {
             href="/settings"
             aria-label="Settings"
             aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-            className={`grid h-10 w-10 place-items-center rounded-md border ${
+            className={`grid h-10 w-10 place-items-center rounded-lg border ${
               pathname.startsWith("/settings")
-                ? "border-[var(--accent)] text-[var(--accent)]"
+                ? "border-[var(--accent)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
                 : "border-[var(--border)] text-[var(--muted)]"
             }`}
           >
@@ -107,7 +109,10 @@ export default function AppShell({ children }: AppShellProps) {
       </header>
 
       <main className="min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-64 md:pb-8">
-        <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 md:px-6 md:py-8">{children}</div>
+        <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 md:px-6 md:py-8">
+          {showLatestSession ? <div className="mb-5"><LatestSessionHero /></div> : null}
+          {children}
+        </div>
       </main>
       <BottomNav />
     </div>

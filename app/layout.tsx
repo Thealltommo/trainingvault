@@ -5,7 +5,7 @@ import "./polish.css";
 
 export const metadata: Metadata = {
   title: "TrainVault",
-  description: "Private athlete operating system for planning, recovery, Garmin and adaptive coaching.",
+  description: "Private athlete intelligence for planning, recovery, Garmin and adaptive coaching.",
   applicationName: "TrainVault",
   appleWebApp: {
     capable: true,

@@ -40,6 +40,15 @@ WorkoutId = Annotated[
         description="Garmin workout identifier",
     ),
 ]
+WorkoutScheduleId = Annotated[
+    str,
+    Path(
+        min_length=1,
+        max_length=32,
+        pattern=r"^[1-9][0-9]*$",
+        description="Garmin workout schedule identifier",
+    ),
+]
 ActivityId = Annotated[
     str,
     Path(
@@ -257,6 +266,31 @@ def create_app(
         garmin: GarminGateway = Depends(get_gateway),
     ) -> WorkoutScheduleResponse:
         return garmin.schedule_workout(workout_id, schedule.date)
+
+    @api.delete(
+        "/workout-schedules/{workout_schedule_id}",
+        dependencies=[Depends(require_bridge_token)],
+    )
+    def unschedule_workout(
+        workout_schedule_id: WorkoutScheduleId,
+        garmin: GarminGateway = Depends(get_gateway),
+    ) -> dict[str, str]:
+        garmin.unschedule_workout(workout_schedule_id)
+        return {
+            "status": "unscheduled",
+            "workoutScheduleId": workout_schedule_id,
+        }
+
+    @api.delete(
+        "/workouts/{workout_id}",
+        dependencies=[Depends(require_bridge_token)],
+    )
+    def delete_workout(
+        workout_id: WorkoutId,
+        garmin: GarminGateway = Depends(get_gateway),
+    ) -> dict[str, str]:
+        garmin.delete_workout(workout_id)
+        return {"status": "deleted", "workoutId": workout_id}
 
     @api.post(
         "/workouts/{workout_id}/push",

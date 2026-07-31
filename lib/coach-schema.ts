@@ -41,7 +41,7 @@ export const coachActivitySchema = z
     activityId: z.string().min(1).max(160),
     title: z.string().min(1).max(180),
     type: z.string().min(1).max(80),
-    startedAt: z.string().datetime(),
+    startedAt: z.string().min(1).max(80),
     durationMinutes: z.number().min(0).max(1_440).nullable(),
     distanceKm: z.number().min(0).max(1_000).nullable(),
     paceSecondsPerKm: z.number().min(60).max(3_600).nullable(),

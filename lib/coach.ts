@@ -34,17 +34,40 @@ function proposalIsConsistent(
     return Boolean(
       proposal.newDate &&
         proposal.variant === null &&
+        proposal.rewriteKind === null &&
         isDateWithinPlanningWindow(proposal.newDate, request.context.today),
     );
   }
 
-  return proposal.variant !== null && proposal.newDate === null;
+  if (proposal.action === "select_variant") {
+    return Boolean(
+      proposal.variant !== null &&
+        proposal.newDate === null &&
+        proposal.rewriteKind === null,
+    );
+  }
+
+  return Boolean(
+    proposal.rewriteKind !== null &&
+      proposal.variant === null &&
+      proposal.newDate === null &&
+      ["run", "fell-trail", "race"].includes(session.type),
+  );
 }
 
 export function sanitizeCoachDecision(
   decision: CoachDecision,
   request: CoachRequest,
 ): CoachDecision {
+  if (request.mode === "advise") {
+    return {
+      ...decision,
+      proposedChanges: [],
+      changeStatus: "not_requested",
+      blockedReason: null,
+    };
+  }
+
   const seen = new Set<string>();
   const proposedChanges = decision.proposedChanges
     .filter((proposal) => {
@@ -57,6 +80,7 @@ export function sanitizeCoachDecision(
       seen.add(key);
       return true;
     })
+    .slice(0, 12)
     .map((proposal) => {
       const session = request.context.sessions.find(
         (candidate) => candidate.id === proposal.sessionId,
@@ -69,9 +93,22 @@ export function sanitizeCoachDecision(
       };
     });
 
+  if (proposedChanges.length > 0) {
+    return {
+      ...decision,
+      proposedChanges,
+      changeStatus: "proposed",
+      blockedReason: null,
+    };
+  }
+
   return {
     ...decision,
-    proposedChanges,
+    proposedChanges: [],
+    changeStatus: "blocked",
+    blockedReason:
+      decision.blockedReason ||
+      "No valid reversible calendar changes survived TrainVault validation. The plan was not changed.",
   };
 }
 
@@ -105,12 +142,17 @@ export function createCoachFallback(
       "TrainVault coaching is training guidance, not medical advice. Stop and seek qualified help for concerning symptoms.",
     ],
     proposedChanges: [],
+    changeStatus: request.mode === "change_plan" ? "blocked" : "not_requested",
+    blockedReason:
+      request.mode === "change_plan"
+        ? "Coach is unavailable, so TrainVault will not manufacture plan changes without a valid structured decision."
+        : null,
     confidence: "low",
     dataSummary: [
       `${request.context.recentLogs.length} recent logs`,
+      `${request.context.recentActivities.length} recent Garmin activities`,
       `${request.context.sessions.length} bounded calendar sessions`,
       `${request.context.upcomingEvents.length} upcoming events`,
     ],
   };
 }
-

@@ -7,14 +7,20 @@ import {
   CalendarClock,
   Check,
   MessageSquareText,
+  PencilLine,
   Send,
   ShieldCheck,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
 import { assessDailyReadiness } from "@/lib/athlete";
+import {
+  applyCoachSessionRewrite,
+  coachRewriteLabel,
+} from "@/lib/coach-plan-rewrite";
 import type {
   CoachDecision,
+  CoachMode,
   CoachProposal,
   CoachRequest,
 } from "@/lib/coach-schema";
@@ -47,13 +53,23 @@ type CoachEnvelope = {
 type Exchange = {
   id: string;
   question: string;
+  mode: CoachMode;
   response: CoachEnvelope;
 };
 
-const quickPrompts = [
-  "Review my next seven days for lower-body interference.",
-  "What should I protect if recovery is poor this week?",
-  "Explain the intent of my next quality session.",
+const quickPrompts: Array<{ mode: CoachMode; text: string }> = [
+  {
+    mode: "advise",
+    text: "Review my next seven days for lower-body interference.",
+  },
+  {
+    mode: "advise",
+    text: "What should I protect if recovery is poor this week?",
+  },
+  {
+    mode: "change_plan",
+    text: "Change my next four weeks to one interval, one threshold and one long run each week. Keep the rest easy and reassess after four weeks.",
+  },
 ];
 
 function localDateKey(date: Date) {
@@ -67,6 +83,12 @@ function looksLowerBody(value: string) {
   return /(run|squat|lunge|wall ball|sled|box jump|clean|deadlift|fell|trail|hike|race|hyrox)/i.test(
     value,
   );
+}
+
+function validNumber(value: number | null, minimum: number, maximum: number) {
+  return value !== null && Number.isFinite(value) && value >= minimum && value <= maximum
+    ? value
+    : null;
 }
 
 export default function CoachPage() {
@@ -84,6 +106,7 @@ export default function CoachPage() {
     [now, recovery],
   );
   const [message, setMessage] = useState("");
+  const [mode, setMode] = useState<CoachMode>("advise");
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -108,7 +131,7 @@ export default function CoachPage() {
     [garminCompletedIds, programme, manualSessions, logs, overrides, lifecycle],
   );
 
-  function buildRequest(question: string): CoachRequest {
+  function buildRequest(question: string, requestMode: CoachMode): CoachRequest {
     const referenceTime = new Date(`${today}T00:00:00Z`).getTime();
     const boundedSessions = sessions
       .filter((session) => {
@@ -157,7 +180,42 @@ export default function CoachPage() {
         notes: log.notes?.slice(0, 500) ?? null,
       }));
 
-    const upcomingEvents = [
+    const recentActivities = [...garmin.activities]
+      .sort((first, second) => {
+        const firstTime = Date.parse(
+          first.activity.startTime ?? first.activity.localStartTime ?? first.importedAt,
+        );
+        const secondTime = Date.parse(
+          second.activity.startTime ?? second.activity.localStartTime ?? second.importedAt,
+        );
+        return (Number.isFinite(secondTime) ? secondTime : 0) - (Number.isFinite(firstTime) ? firstTime : 0);
+      })
+      .slice(0, 24)
+      .flatMap((record) => {
+        const activity = record.activity;
+        const startedAt = activity.startTime ?? activity.localStartTime ?? record.importedAt;
+        if (!activity.activityId || !startedAt) return [];
+
+        return [
+          {
+            activityId: activity.activityId,
+            title: (activity.title || activity.activityType || "Garmin activity").slice(0, 180),
+            type: (activity.activityType || "activity").slice(0, 80),
+            startedAt,
+            durationMinutes:
+              activity.durationSeconds !== null ? activity.durationSeconds / 60 : null,
+            distanceKm:
+              activity.distanceMeters !== null ? activity.distanceMeters / 1_000 : null,
+            paceSecondsPerKm: validNumber(activity.averagePaceSecondsPerKm, 60, 3_600),
+            averageHeartRateBpm: validNumber(activity.averageHeartRateBpm, 20, 260),
+            elevationGainMeters: validNumber(activity.elevationGainMeters, 0, 20_000),
+            aerobicTrainingEffect: validNumber(activity.aerobicTrainingEffect, 0, 10),
+            anaerobicTrainingEffect: validNumber(activity.anaerobicTrainingEffect, 0, 10),
+          },
+        ];
+      });
+
+    const eventCandidates = [
       programme?.targetDate
         ? {
             title: programme.targetEvent || "Target event",
@@ -172,6 +230,18 @@ export default function CoachPage() {
             priority: "B" as const,
           }
         : null,
+      ...sessions
+        .filter(
+          (session) =>
+            session.type === "race" &&
+            Boolean(session.scheduledDate) &&
+            session.scheduledDate >= today,
+        )
+        .map((session) => ({
+          title: session.workout.title.slice(0, 180),
+          date: session.scheduledDate,
+          priority: "B" as const,
+        })),
     ].filter(
       (
         event,
@@ -182,18 +252,28 @@ export default function CoachPage() {
       } => Boolean(event),
     );
 
+    const upcomingEvents = Array.from(
+      new Map(eventCandidates.map((event) => [`${event.date}:${event.title}`, event])).values(),
+    )
+      .sort((first, second) => first.date.localeCompare(second.date))
+      .slice(0, 8);
+
     return {
+      mode: requestMode,
       message: question,
       context: {
         today,
         readiness: {
-          zone: readiness ? readiness.zone.toLowerCase() as "green" | "amber" | "red" : null,
+          zone: readiness
+            ? (readiness.zone.toLowerCase() as "green" | "amber" | "red")
+            : null,
           score: readiness?.score ?? null,
           factors: readiness?.factors.slice(0, 12).map((factor) => factor.label) ?? [],
           athleteOverride: readiness?.manualOverrideApplied ?? false,
         },
         sessions: boundedSessions,
         recentLogs,
+        recentActivities,
         upcomingEvents,
       },
     };
@@ -204,6 +284,7 @@ export default function CoachPage() {
     const question = message.trim();
     if (!question || pending || now === 0) return;
 
+    const submittedMode = mode;
     setPending(true);
     setError("");
     setAuditNote("");
@@ -212,7 +293,7 @@ export default function CoachPage() {
       const response = await fetch("/api/coach", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRequest(question)),
+        body: JSON.stringify(buildRequest(question, submittedMode)),
       });
       const payload = (await response.json()) as CoachEnvelope | { error?: string };
 
@@ -226,6 +307,7 @@ export default function CoachPage() {
         {
           id: crypto.randomUUID(),
           question,
+          mode: submittedMode,
           response: payload,
         },
         ...current,
@@ -242,7 +324,10 @@ export default function CoachPage() {
     }
   }
 
-  async function auditAppliedProposal(decisionKey: string | undefined, proposal: CoachProposal) {
+  async function auditAppliedProposal(
+    decisionKey: string | undefined,
+    proposal: CoachProposal,
+  ) {
     if (!decisionKey) return;
     try {
       const response = await fetch("/api/v3/decisions", {
@@ -256,13 +341,16 @@ export default function CoachPage() {
           action: proposal.action,
           newDate: proposal.newDate,
           variant: proposal.variant,
+          rewriteKind: proposal.rewriteKind,
           reason: proposal.reason,
         }),
       });
       if (!response.ok) throw new Error("audit failed");
       setAuditNote("Confirmed change written to V3 decision history.");
     } catch {
-      setAuditNote("Plan changed successfully; V3 decision audit will retry on a future action.");
+      setAuditNote(
+        "Plan changed successfully; V3 decision audit will retry on a future action.",
+      );
     }
   }
 
@@ -277,11 +365,13 @@ export default function CoachPage() {
     const detail =
       proposal.action === "reschedule"
         ? `Move ${session.workout.title} to ${proposal.newDate}?`
-        : `Select ${proposal.variant?.toUpperCase()} for ${session.workout.title}?`;
+        : proposal.action === "rewrite_session" && proposal.rewriteKind
+          ? `Rewrite ${session.workout.title} as ${coachRewriteLabel(proposal.rewriteKind)}?`
+          : `Select ${proposal.variant?.toUpperCase()} for ${session.workout.title}?`;
 
     if (
       !window.confirm(
-        `${detail}\n\nReason: ${proposal.reason}\n\nThe original prescription will be preserved.`,
+        `${detail}\n\nReason: ${proposal.reason}\n\nThe original prescription will be preserved in TrainVault history.`,
       )
     ) {
       return;
@@ -295,6 +385,8 @@ export default function CoachPage() {
         proposal.variant,
         `Coach proposal confirmed by athlete: ${proposal.reason}`,
       );
+    } else if (proposal.action === "rewrite_session" && proposal.rewriteKind) {
+      applyCoachSessionRewrite(session, proposal.rewriteKind, proposal.reason);
     } else {
       setError("The proposed change was incomplete and was not applied.");
       return;
@@ -311,12 +403,12 @@ export default function CoachPage() {
   return (
     <div className="grid gap-5">
       <header className="border-b border-[var(--border)] pb-5">
-        <p className="tv-label text-[var(--accent)]">Coach · V3</p>
-        <h1 className="mt-2 text-4xl font-black uppercase leading-none sm:text-5xl">
+        <p className="tv-label text-[var(--accent)]">Coach · V3.2</p>
+        <h1 className="mt-2 text-4xl font-black leading-none sm:text-5xl">
           Ask, inspect, confirm
         </h1>
         <p className="mt-3 max-w-3xl text-sm font-bold text-[var(--muted)]">
-          Coach receives bounded plan, recovery and recent training context. It can explain and propose reversible changes, but deterministic rules remain authoritative and every write still needs your confirmation.
+          Your explicit training preferences now outrank the generated plan unless a real safety or recovery guardrail blocks them. Coach can either advise, or propose reversible calendar changes for you to confirm.
         </p>
       </header>
 
@@ -327,17 +419,49 @@ export default function CoachPage() {
               <Sparkles className="h-5 w-5" aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="tv-label text-[var(--accent)]">Controlled interpretation</p>
+              <p className="tv-label text-[var(--accent)]">Choose the job</p>
               <p className="mt-2 text-sm font-bold text-[var(--muted)]">
                 {readiness
-                  ? `Today is ${readiness.zone} · ${readiness.score}/100 · ${readiness.recommendation.toUpperCase()}. That real readiness context is included with your request.`
+                  ? `Today is ${readiness.zone} · ${readiness.score}/100 · ${readiness.recommendation.toUpperCase()}. Recovery remains a guardrail, not a veto on your stated training philosophy.`
                   : "Recovery is not available for today yet. Coach will say so rather than manufacture a readiness state."}
               </p>
             </div>
           </div>
 
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-[var(--border)] bg-black/40 p-1.5">
+            <button
+              type="button"
+              onClick={() => setMode("advise")}
+              className={`min-h-12 rounded-lg px-3 text-sm font-black transition-colors ${
+                mode === "advise"
+                  ? "bg-white/10 text-white"
+                  : "text-[var(--muted)] hover:text-white"
+              }`}
+            >
+              Advise me
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("change_plan")}
+              className={`min-h-12 rounded-lg px-3 text-sm font-black transition-colors ${
+                mode === "change_plan"
+                  ? "bg-[var(--accent)] text-black"
+                  : "text-[var(--muted)] hover:text-white"
+              }`}
+            >
+              Change my plan
+            </button>
+          </div>
+          <p className="mt-2 text-xs font-bold text-[var(--muted)]">
+            {mode === "change_plan"
+              ? "Change mode must return concrete reversible proposals when the request is feasible. Nothing is written until you confirm each change."
+              : "Advice mode analyses and challenges the plan but deliberately makes no calendar writes."}
+          </p>
+
           <form onSubmit={askCoach} className="mt-5 grid gap-3">
-            <label htmlFor="coach-message" className="tv-label">What needs sorting?</label>
+            <label htmlFor="coach-message" className="tv-label">
+              {mode === "change_plan" ? "What do you want changed?" : "What needs sorting?"}
+            </label>
             <textarea
               id="coach-message"
               value={message}
@@ -345,17 +469,31 @@ export default function CoachPage() {
               maxLength={2_000}
               rows={5}
               className="tv-input min-h-32 resize-y py-3"
-              placeholder="My legs are destroyed from Hawkeye and I am going to Helvellyn Saturday. Sort my week."
+              placeholder={
+                mode === "change_plan"
+                  ? "I want one interval, one threshold and one long run every week for the next month. Change the plan around that."
+                  : "My legs are destroyed from Hawkeye and I am going to Helvellyn Saturday. What should I protect?"
+              }
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-xs font-bold text-[var(--muted)]">{message.length}/2000 · no automatic writes</span>
+              <span className="text-xs font-bold text-[var(--muted)]">
+                {message.length}/2000 · athlete confirmation required for every write
+              </span>
               <button
                 type="submit"
                 disabled={pending || message.trim().length < 2 || now === 0}
                 className="tv-button-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <Send className="h-4 w-4" aria-hidden="true" />
-                {pending ? "Thinking…" : "Ask Coach"}
+                {mode === "change_plan" ? (
+                  <PencilLine className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Send className="h-4 w-4" aria-hidden="true" />
+                )}
+                {pending
+                  ? "Thinking…"
+                  : mode === "change_plan"
+                    ? "Propose changes"
+                    : "Ask Coach"}
               </button>
             </div>
           </form>
@@ -363,53 +501,73 @@ export default function CoachPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             {quickPrompts.map((prompt) => (
               <button
-                key={prompt}
+                key={prompt.text}
                 type="button"
-                onClick={() => setMessage(prompt)}
+                onClick={() => {
+                  setMode(prompt.mode);
+                  setMessage(prompt.text);
+                }}
                 className="min-h-10 rounded-sm border border-[var(--border)] bg-black px-3 text-left text-xs font-black uppercase text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
               >
-                {prompt}
+                {prompt.text}
               </button>
             ))}
           </div>
         </article>
 
-        <Link href="/command" className="tv-card tv-card-hover flex min-w-52 flex-col justify-between p-4">
+        <Link
+          href="/command"
+          className="tv-card tv-card-hover flex min-w-52 flex-col justify-between p-4"
+        >
           <BrainCircuit className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
           <div className="mt-8">
-            <p className="tv-label">Before the model</p>
-            <p className="mt-1 text-lg font-black uppercase">Check deterministic runway</p>
+            <p className="tv-label">Hard guardrails</p>
+            <p className="mt-1 text-lg font-black">Check deterministic runway</p>
           </div>
         </Link>
       </section>
 
       {error ? (
-        <div role="alert" className="flex items-start gap-3 border border-white/20 bg-white/5 p-4 text-sm font-bold text-[var(--muted)]">
-          <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        <div
+          role="alert"
+          className="flex items-start gap-3 border border-white/20 bg-white/5 p-4 text-sm font-bold text-[var(--muted)]"
+        >
+          <TriangleAlert
+            className="mt-0.5 h-5 w-5 shrink-0 text-[var(--accent)]"
+            aria-hidden="true"
+          />
           {error} Your calendar and today&apos;s session remain available.
         </div>
       ) : null}
 
       {auditNote ? (
-        <p className="border-l-2 border-[var(--accent)] pl-3 text-xs font-bold text-[var(--muted)]">{auditNote}</p>
+        <p className="border-l-2 border-[var(--accent)] pl-3 text-xs font-bold text-[var(--muted)]">
+          {auditNote}
+        </p>
       ) : null}
 
       {exchanges.length === 0 ? (
         <section className="grid gap-3 sm:grid-cols-3">
           <article className="tv-card p-4">
             <CalendarClock className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-            <h2 className="mt-4 text-lg font-black uppercase">Real plan context</h2>
-            <p className="mt-2 text-sm font-bold text-[var(--muted)]">At most 42 nearby sessions and 24 recent logs are sent.</p>
+            <h2 className="mt-4 text-lg font-black">Real training context</h2>
+            <p className="mt-2 text-sm font-bold text-[var(--muted)]">
+              Up to 42 nearby sessions, 24 logs and 24 recent Garmin activities are sent.
+            </p>
           </article>
           <article className="tv-card p-4">
             <ShieldCheck className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-            <h2 className="mt-4 text-lg font-black uppercase">Rules stay in code</h2>
-            <p className="mt-2 text-sm font-bold text-[var(--muted)]">Recovery and interference logic is not delegated to the model.</p>
+            <h2 className="mt-4 text-lg font-black">Hierarchy is explicit</h2>
+            <p className="mt-2 text-sm font-bold text-[var(--muted)]">
+              Safety first, then your explicit constraints, then the generated plan, then optimisation.
+            </p>
           </article>
           <article className="tv-card p-4">
             <MessageSquareText className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-            <h2 className="mt-4 text-lg font-black uppercase">Athlete decides</h2>
-            <p className="mt-2 text-sm font-bold text-[var(--muted)]">Confirmed proposals are applied locally and audited into V3 cloud history.</p>
+            <h2 className="mt-4 text-lg font-black">Athlete decides</h2>
+            <p className="mt-2 text-sm font-bold text-[var(--muted)]">
+              Rewrites, moves and variants remain proposals until you confirm them.
+            </p>
           </article>
         </section>
       ) : null}
@@ -420,32 +578,60 @@ export default function CoachPage() {
           return (
             <article key={exchange.id} className="tv-card overflow-hidden">
               <div className="border-b border-[var(--border)] bg-black p-4">
-                <p className="tv-label">You</p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="tv-label">You</p>
+                  <span className="tv-chip border-[var(--border)] bg-black text-[var(--muted)]">
+                    {exchange.mode === "change_plan" ? "CHANGE MY PLAN" : "ADVISE ME"}
+                  </span>
+                </div>
                 <p className="mt-2 text-sm font-black">{exchange.question}</p>
               </div>
               <div className="p-4 sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="tv-label text-[var(--accent)]">Coach response</p>
                   <span className="tv-chip border-[var(--border)] bg-black text-[var(--muted)]">
-                    {exchange.response.source === "openai" ? "OpenAI · structured · V3 audited" : "Safe fallback · V3 audited"}
+                    {exchange.response.source === "openai"
+                      ? "OpenAI · structured · V3 audited"
+                      : "Safe fallback · V3 audited"}
                   </span>
                 </div>
                 <p className="mt-3 text-lg font-black leading-snug">{decision.summary}</p>
+
+                {decision.changeStatus === "blocked" && decision.blockedReason ? (
+                  <div className="mt-4 border-l-2 border-[var(--accent)] bg-white/[0.035] p-4">
+                    <p className="tv-label text-[var(--accent)]">Plan change blocked</p>
+                    <p className="mt-2 text-sm font-bold text-[var(--muted)]">
+                      {decision.blockedReason}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
                   <div>
                     <p className="tv-label">Why</p>
                     <ul className="mt-2 grid gap-2">
                       {decision.rationale.map((reason) => (
-                        <li key={reason} className="border-l-2 border-[var(--accent)] pl-3 text-sm font-bold text-[var(--muted)]">{reason}</li>
+                        <li
+                          key={reason}
+                          className="border-l-2 border-[var(--accent)] pl-3 text-sm font-bold text-[var(--muted)]"
+                        >
+                          {reason}
+                        </li>
                       ))}
                     </ul>
                   </div>
                   <div>
-                    <p className="tv-label">Data used · {decision.confidence} confidence</p>
+                    <p className="tv-label">
+                      Data used · {decision.confidence} confidence
+                    </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {decision.dataSummary.map((item) => (
-                        <span key={item} className="tv-chip border-[var(--border)] bg-black text-[var(--muted)]">{item}</span>
+                        <span
+                          key={item}
+                          className="tv-chip border-[var(--border)] bg-black text-[var(--muted)]"
+                        >
+                          {item}
+                        </span>
                       ))}
                     </div>
                   </div>
@@ -453,26 +639,43 @@ export default function CoachPage() {
 
                 {decision.proposedChanges.length > 0 ? (
                   <div className="mt-5 border-t border-[var(--border)] pt-5">
-                    <p className="tv-label text-[var(--accent)]">Proposed changes · confirmation required</p>
+                    <p className="tv-label text-[var(--accent)]">
+                      Proposed changes · confirmation required
+                    </p>
                     <div className="mt-3 grid gap-3">
                       {decision.proposedChanges.map((proposal) => {
                         const applied = appliedProposalIds.has(proposal.id);
+                        const actionText =
+                          proposal.action === "reschedule"
+                            ? `${proposal.currentDate ?? "Unscheduled"} → ${proposal.newDate}`
+                            : proposal.action === "rewrite_session" && proposal.rewriteKind
+                              ? `Rewrite as ${coachRewriteLabel(proposal.rewriteKind)}`
+                              : `Select ${proposal.variant}`;
+
                         return (
-                          <article key={proposal.id} className="border border-[var(--border)] bg-black p-4">
+                          <article
+                            key={proposal.id}
+                            className="border border-[var(--border)] bg-black p-4"
+                          >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div>
-                                <p className="text-sm font-black uppercase">{proposal.sessionTitle}</p>
+                                <p className="text-sm font-black">{proposal.sessionTitle}</p>
                                 <p className="mt-1 text-xs font-black uppercase text-[var(--accent)]">
-                                  {proposal.action === "reschedule"
-                                    ? `${proposal.currentDate ?? "Unscheduled"} → ${proposal.newDate}`
-                                    : `Select ${proposal.variant}`}
+                                  {actionText}
                                 </p>
-                                <p className="mt-2 max-w-2xl text-sm font-bold text-[var(--muted)]">{proposal.reason}</p>
+                                <p className="mt-2 max-w-2xl text-sm font-bold text-[var(--muted)]">
+                                  {proposal.reason}
+                                </p>
                               </div>
                               <button
                                 type="button"
                                 disabled={applied}
-                                onClick={() => applyProposal(proposal, exchange.response.decisionKey)}
+                                onClick={() =>
+                                  applyProposal(
+                                    proposal,
+                                    exchange.response.decisionKey,
+                                  )
+                                }
                                 className={
                                   applied
                                     ? "tv-button-ghost cursor-default border-[var(--accent)] text-[var(--accent)]"
@@ -493,7 +696,9 @@ export default function CoachPage() {
                 {decision.cautions.length > 0 ? (
                   <div className="mt-5 border-t border-[var(--border)] pt-4">
                     {decision.cautions.map((caution) => (
-                      <p key={caution} className="text-xs font-bold text-[var(--muted)]">{caution}</p>
+                      <p key={caution} className="text-xs font-bold text-[var(--muted)]">
+                        {caution}
+                      </p>
                     ))}
                   </div>
                 ) : null}
@@ -504,7 +709,11 @@ export default function CoachPage() {
       </section>
 
       <p className="text-xs font-bold text-[var(--muted)]">
-        Training guidance only, not medical advice. <Link href="/plan" className="text-[var(--accent)] underline">Review the calendar</Link> before training.
+        Training guidance only, not medical advice.{" "}
+        <Link href="/plan" className="text-[var(--accent)] underline">
+          Review the calendar
+        </Link>{" "}
+        before training.
       </p>
     </div>
   );

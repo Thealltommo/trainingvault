@@ -6,6 +6,7 @@ import {
 } from "@/lib/coach";
 
 const request: CoachRequest = {
+  mode: "change_plan",
   message: "Sort my week",
   context: {
     today: "2026-07-29",
@@ -42,6 +43,7 @@ const request: CoachRequest = {
       },
     ],
     recentLogs: [],
+    recentActivities: [],
     upcomingEvents: [],
   },
 };
@@ -54,6 +56,8 @@ function decision(
     rationale: ["The supplied readiness signal is amber."],
     cautions: [],
     proposedChanges,
+    changeStatus: proposedChanges.length > 0 ? "proposed" : "blocked",
+    blockedReason: proposedChanges.length > 0 ? null : "No valid change supplied.",
     confidence: "medium",
     dataSummary: ["2 calendar sessions"],
   };
@@ -71,6 +75,7 @@ describe("controlled Coach decisions", () => {
           currentDate: null,
           newDate: null,
           variant: "minimum",
+          rewriteKind: null,
           reason: "Not grounded",
         },
         {
@@ -81,6 +86,7 @@ describe("controlled Coach decisions", () => {
           currentDate: "2026-07-28",
           newDate: null,
           variant: "adjusted",
+          rewriteKind: null,
           reason: "Already completed",
         },
       ]),
@@ -88,6 +94,7 @@ describe("controlled Coach decisions", () => {
     );
 
     expect(result.proposedChanges).toEqual([]);
+    expect(result.changeStatus).toBe("blocked");
   });
 
   it("keeps only internally consistent, bounded proposals", () => {
@@ -101,6 +108,7 @@ describe("controlled Coach decisions", () => {
           currentDate: null,
           newDate: "2026-08-01",
           variant: null,
+          rewriteKind: null,
           reason: "Create more lower-body separation.",
         },
         {
@@ -111,6 +119,7 @@ describe("controlled Coach decisions", () => {
           currentDate: "2026-07-30",
           newDate: "2026-08-02",
           variant: "minimum",
+          rewriteKind: null,
           reason: "Two writes in one proposal.",
         },
       ]),
@@ -118,6 +127,7 @@ describe("controlled Coach decisions", () => {
     );
 
     expect(result.proposedChanges).toHaveLength(1);
+    expect(result.changeStatus).toBe("proposed");
     expect(result.proposedChanges[0]).toMatchObject({
       id: "valid",
       sessionTitle: "Threshold",
@@ -129,8 +139,8 @@ describe("controlled Coach decisions", () => {
     const fallback = createCoachFallback(request, "not_configured");
 
     expect(fallback.proposedChanges).toEqual([]);
+    expect(fallback.changeStatus).toBe("blocked");
     expect(fallback.confidence).toBe("low");
     expect(fallback.summary).toContain("not configured");
   });
 });
-

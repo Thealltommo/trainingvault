@@ -5,7 +5,7 @@ import {
 } from "@/lib/plan-studio";
 
 describe("Plan Studio", () => {
-  it("builds a bounded hybrid-aware block with recovery weeks", () => {
+  it("builds a bounded hybrid-aware block with a month-first reassessment week", () => {
     const sessions = buildPlanStudioSessions({
       goal: "5k",
       startDate: "2026-08-03",
@@ -20,8 +20,23 @@ describe("Plan Studio", () => {
     expect(sessions).toHaveLength(48);
     expect(sessions.filter((session) => session.type === "crossfit")).toHaveLength(16);
     expect(sessions.filter((session) => session.type === "run")).toHaveLength(32);
-    expect(sessions.some((session) => session.week === 4 && session.targetStimulus.includes("Recovery-week"))).toBe(true);
-    expect(sessions.every((session) => session.durationMinutes >= session.minimumMinutes)).toBe(true);
+    expect(
+      sessions.some(
+        (session) =>
+          session.week === 5 &&
+          session.targetStimulus.includes("first planned reduced-dose reassessment week"),
+      ),
+    ).toBe(true);
+    expect(
+      sessions.some(
+        (session) => session.week === 4 && session.title.startsWith("Reduced"),
+      ),
+    ).toBe(false);
+    expect(
+      sessions.every(
+        (session) => session.durationMinutes >= session.minimumMinutes,
+      ),
+    ).toBe(true);
   });
 
   it("turns Spartan long days into trail sessions", () => {

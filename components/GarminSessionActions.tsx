@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   LoaderCircle,
+  RefreshCw,
   Send,
   Watch,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const stateLabels: Record<GarminSyncState, string> = {
   error: "Error",
 };
 const STALE_SYNC_AFTER_MS = 2 * 60 * 1_000;
+const STRUCTURED_SIGNATURES_KEY = "trainvault_garmin_structured_signatures_v1";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,6 +54,14 @@ function safeError(value: unknown, fallback: string) {
   }
 
   return value.error.slice(0, 300);
+}
+
+function safeWarning(value: unknown) {
+  if (!isObject(value) || typeof value.replacementWarning !== "string") {
+    return "";
+  }
+
+  return value.replacementWarning.slice(0, 400);
 }
 
 function responseRecord(
@@ -113,6 +123,54 @@ function stateClasses(state: GarminSyncState) {
   return "border-[var(--border)] bg-black text-[var(--muted)]";
 }
 
+function structuredWorkoutSignature(workout: StructuredRunningWorkout) {
+  const raw = JSON.stringify({
+    name: workout.name,
+    date: workout.date ?? null,
+    description: workout.description ?? null,
+    estimatedDurationSeconds: workout.estimatedDurationSeconds ?? null,
+    steps: workout.steps,
+  });
+  let hash = 2166136261;
+
+  for (let index = 0; index < raw.length; index += 1) {
+    hash ^= raw.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `${raw.length}:${(hash >>> 0).toString(16)}`;
+}
+
+function readSyncedSignature(sessionId: string) {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(STRUCTURED_SIGNATURES_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isObject(parsed)) return null;
+    return typeof parsed[sessionId] === "string" ? parsed[sessionId] : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSyncedSignature(sessionId: string, signature: string) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const raw = window.localStorage.getItem(STRUCTURED_SIGNATURES_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
+    const signatures = isObject(parsed) ? parsed : {};
+    window.localStorage.setItem(
+      STRUCTURED_SIGNATURES_KEY,
+      JSON.stringify({ ...signatures, [sessionId]: signature }),
+    );
+  } catch {
+    // Signature tracking improves replacement UX but is not required for Garmin delivery.
+  }
+}
+
 export default function GarminSessionActions({
   sessionId,
   scheduledDate,
@@ -137,18 +195,77 @@ export default function GarminSessionActions({
   const [devices, setDevices] = useState<GarminDevice[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [deviceError, setDeviceError] = useState("");
+  const [operationNotice, setOperationNotice] = useState("");
+  const [syncedSignature, setSyncedSignature] = useState<string | null>(() =>
+    readSyncedSignature(sessionId),
+  );
   const hasPrescription =
     Boolean(structuredWorkout) && (structuredWorkout?.steps.length ?? 0) > 0;
+  const currentSignature = useMemo(
+    () => (structuredWorkout ? structuredWorkoutSignature(structuredWorkout) : null),
+    [structuredWorkout],
+  );
+  const hasExistingScheduledWorkout = Boolean(
+    record?.garminWorkoutId &&
+      record?.workoutScheduleId &&
+      (state === "scheduled" || state === "sent_to_device"),
+  );
+  const signatureChanged = Boolean(
+    hasExistingScheduledWorkout &&
+      currentSignature &&
+      syncedSignature &&
+      currentSignature !== syncedSignature,
+  );
+  const unverifiedPrescriptionChange = Boolean(
+    hasExistingScheduledWorkout &&
+      !prescriptionMatchesStructuredWorkout &&
+      currentSignature !== syncedSignature,
+  );
+  const needsReplacement = signatureChanged || unverifiedPrescriptionChange;
+  const canPushExisting = Boolean(
+    hasExistingScheduledWorkout &&
+      !needsReplacement &&
+      pushToDevice &&
+      state === "scheduled",
+  );
+  const canInitialSend = Boolean(
+    !hasExistingScheduledWorkout &&
+      prescriptionMatchesStructuredWorkout &&
+      state !== "syncing",
+  );
+  const canRetry = state === "error" && hasPrescription;
   const canSend =
     Boolean(scheduledDate) &&
     hasPrescription &&
-    prescriptionMatchesStructuredWorkout &&
     state !== "syncing" &&
-    !(
-      state === "sent_to_device" &&
-      record?.scheduledDate === scheduledDate
-    ) &&
-    !(state === "scheduled" && !pushToDevice);
+    (needsReplacement || canPushExisting || canInitialSend || canRetry);
+
+  useEffect(() => {
+    setSyncedSignature(readSyncedSignature(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (
+      !currentSignature ||
+      syncedSignature ||
+      !hasExistingScheduledWorkout ||
+      !prescriptionMatchesStructuredWorkout
+    ) {
+      return;
+    }
+
+    // Existing pre-signature records that still match the selected prescription
+    // are treated as the version already in Garmin. Edited/mismatched records are
+    // deliberately not adopted so the user is offered an explicit replacement.
+    writeSyncedSignature(sessionId, currentSignature);
+    setSyncedSignature(currentSignature);
+  }, [
+    currentSignature,
+    hasExistingScheduledWorkout,
+    prescriptionMatchesStructuredWorkout,
+    sessionId,
+    syncedSignature,
+  ]);
 
   useEffect(() => {
     if (
@@ -221,6 +338,16 @@ export default function GarminSessionActions({
       return;
     }
 
+    if (
+      needsReplacement &&
+      !window.confirm(
+        "Replace the workout already scheduled in Garmin with the structured steps shown on this page?\n\nTrainVault will upload and schedule the new version first, then remove the old Garmin calendar entry and workout template. Your previous TrainVault prescription remains in history.",
+      )
+    ) {
+      return;
+    }
+
+    setOperationNotice("");
     const retryIds =
       record?.scheduledDate === scheduledDate
         ? {
@@ -251,6 +378,7 @@ export default function GarminSessionActions({
           scheduledDate,
           workout: structuredWorkout,
           pushToDevice,
+          replaceExisting: needsReplacement,
           deviceId: selectedDeviceId || null,
           ...retryIds,
         }),
@@ -265,6 +393,22 @@ export default function GarminSessionActions({
       }
 
       saveGarminWorkoutSync(nextRecord);
+
+      if (nextRecord.state === "scheduled" || nextRecord.state === "sent_to_device") {
+        if (currentSignature) {
+          writeSyncedSignature(sessionId, currentSignature);
+          setSyncedSignature(currentSignature);
+        }
+        const warning = safeWarning(value);
+        setOperationNotice(
+          warning ||
+            (needsReplacement
+              ? "Garmin now has the updated structured workout. The previous scheduled version was cleaned up."
+              : nextRecord.state === "sent_to_device"
+                ? "Garmin accepted the workout for the selected device."
+                : "Workout is scheduled in Garmin Connect."),
+        );
+      }
     } catch (error) {
       saveGarminWorkoutSync({
         ...syncingRecord,
@@ -278,14 +422,19 @@ export default function GarminSessionActions({
     }
   }
 
-  const buttonLabel =
-    state === "error"
+  const buttonLabel = needsReplacement
+    ? "Update Garmin"
+    : state === "error"
       ? "Retry Garmin"
       : state === "scheduled" && pushToDevice
         ? "Send to device"
-        : state === "syncing"
-          ? "Syncing"
-          : "Send to Garmin";
+        : state === "scheduled"
+          ? "Already scheduled"
+          : state === "sent_to_device"
+            ? "Already sent to device"
+            : state === "syncing"
+              ? "Syncing"
+              : "Send to Garmin";
 
   return (
     <section className="tv-card border-[rgba(215,255,47,0.3)] p-4">
@@ -336,15 +485,32 @@ export default function GarminSessionActions({
       )}
 
       {hasPrescription && !prescriptionMatchesStructuredWorkout ? (
-        <p
+        <div
           className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
           role="alert"
         >
-          The selected prescription differs from these structured Garmin
-          steps. TrainVault will not send the unchanged full workout. Return
-          to FULL, or create a separately structured reduced run. A workout
-          already scheduled in Garmin is not automatically rewritten or
-          cancelled.
+          <p>
+            TrainVault cannot prove that the selected prescription and the
+            stored structured Garmin steps are identical. Review the Garmin-ready
+            steps shown on this page before sending them.
+          </p>
+          {needsReplacement ? (
+            <p className="mt-2 text-xs text-amber-100/80">
+              Garmin already has an older scheduled version. Update Garmin will
+              replace that calendar entry instead of silently creating another one.
+            </p>
+          ) : syncedSignature === currentSignature ? (
+            <p className="mt-2 text-xs text-amber-100/80">
+              This exact structured version has already been synced to Garmin.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {state === "scheduled" && !needsReplacement ? (
+        <p className="mt-3 rounded-md border border-[var(--border)] bg-black/50 p-3 text-xs font-bold text-[var(--muted)]">
+          This workout is already in Garmin Connect. To send it directly to your
+          watch now, tick <span className="text-[var(--text)]">Also push to a device</span> below.
         </p>
       ) : null}
 
@@ -417,6 +583,12 @@ export default function GarminSessionActions({
         </p>
       ) : null}
 
+      {operationNotice ? (
+        <p className="mt-3 rounded-md border border-[rgba(215,255,47,0.35)] bg-[rgba(215,255,47,0.08)] p-3 text-xs font-bold text-[var(--text)]">
+          {operationNotice}
+        </p>
+      ) : null}
+
       {staleSyncing ? (
         <p
           className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
@@ -445,6 +617,8 @@ export default function GarminSessionActions({
       >
         {state === "syncing" ? (
           <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : needsReplacement ? (
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
         ) : (
           <Send className="h-4 w-4" aria-hidden="true" />
         )}

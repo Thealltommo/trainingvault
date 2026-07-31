@@ -62,12 +62,22 @@ const elementSchema = z.discriminatedUnion("kind", [
 ]);
 
 const numericGarminId = z.string().regex(/^[1-9]\d{0,31}$/);
+const workoutCleanupResponseSchema = z
+  .object({ status: z.literal("deleted"), workoutId: numericGarminId })
+  .strict();
+const scheduleCleanupResponseSchema = z
+  .object({
+    status: z.literal("unscheduled"),
+    workoutScheduleId: numericGarminId,
+  })
+  .strict();
 
 const sendWorkoutRequestSchema = z
   .object({
     sessionId: z.string().trim().min(1).max(160),
     scheduledDate: isoDateSchema,
     pushToDevice: z.boolean().default(false),
+    replaceExisting: z.boolean().default(false),
     deviceId: z
       .string()
       .trim()
@@ -77,7 +87,7 @@ const sendWorkoutRequestSchema = z
       .nullable()
       .optional(),
     garminWorkoutId: numericGarminId.nullable().optional(),
-    workoutScheduleId: z.string().trim().min(1).max(128).nullable().optional(),
+    workoutScheduleId: numericGarminId.nullable().optional(),
     workout: z
       .object({
         id: z.string().trim().min(1).max(160),
@@ -160,8 +170,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let garminWorkoutId = input.garminWorkoutId ?? null;
-  let workoutScheduleId = input.workoutScheduleId ?? null;
+  const previousGarminWorkoutId =
+    input.replaceExisting ? input.garminWorkoutId ?? null : null;
+  const previousWorkoutScheduleId =
+    input.replaceExisting ? input.workoutScheduleId ?? null : null;
+  let garminWorkoutId = input.replaceExisting
+    ? null
+    : input.garminWorkoutId ?? null;
+  let workoutScheduleId = input.replaceExisting
+    ? null
+    : input.workoutScheduleId ?? null;
   let deviceId = input.deviceId ?? null;
   const responseBase = {
     sessionId: input.sessionId,
@@ -220,6 +238,45 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let replacementWarning: string | null = null;
+
+  if (input.replaceExisting) {
+    let oldScheduleRemoved = previousWorkoutScheduleId === null;
+
+    if (previousWorkoutScheduleId) {
+      try {
+        await garminBridgeFetch(
+          `/workout-schedules/${encodeURIComponent(previousWorkoutScheduleId)}`,
+          scheduleCleanupResponseSchema,
+          { method: "DELETE" },
+          20_000,
+        );
+        oldScheduleRemoved = true;
+      } catch {
+        replacementWarning =
+          "The new workout is scheduled, but Garmin did not confirm removal of the previous calendar entry. Check Garmin Connect for a duplicate.";
+      }
+    }
+
+    if (
+      previousGarminWorkoutId &&
+      oldScheduleRemoved &&
+      previousGarminWorkoutId !== garminWorkoutId
+    ) {
+      try {
+        await garminBridgeFetch(
+          `/workouts/${encodeURIComponent(previousGarminWorkoutId)}`,
+          workoutCleanupResponseSchema,
+          { method: "DELETE" },
+          20_000,
+        );
+      } catch {
+        replacementWarning ??=
+          "The new workout is scheduled and the old calendar entry was removed, but Garmin kept the previous workout template in the library.";
+      }
+    }
+  }
+
   if (input.pushToDevice) {
     try {
       const pushed = await garminBridgeFetch(
@@ -247,6 +304,7 @@ export async function POST(request: NextRequest) {
         garminWorkoutId,
         workoutScheduleId,
         deviceId,
+        replacementWarning,
       });
     } catch (error) {
       return failureResponse(error, "push", {
@@ -264,5 +322,6 @@ export async function POST(request: NextRequest) {
     garminWorkoutId,
     workoutScheduleId,
     deviceId: null,
+    replacementWarning,
   });
 }

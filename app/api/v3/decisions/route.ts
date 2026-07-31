@@ -14,9 +14,10 @@ const actionSchema = z.object({
   proposalId: z.string().trim().min(1).max(240),
   sessionId: z.string().trim().min(1).max(240),
   sessionTitle: z.string().trim().min(1).max(180),
-  action: z.enum(["reschedule", "select_variant"]),
+  action: z.enum(["reschedule", "select_variant", "rewrite_session"]),
   newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   variant: z.enum(["full", "adjusted", "minimum"]).nullable(),
+  rewriteKind: z.enum(["easy", "long", "intervals", "threshold"]).nullable(),
   reason: z.string().trim().min(1).max(1_000),
 });
 
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
         action: action.action,
         newDate: action.newDate,
         variant: action.variant,
+        rewriteKind: action.rewriteKind,
       },
     });
 

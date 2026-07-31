@@ -301,6 +301,14 @@ class GarminGateway:
             date=schedule_date,
         )
 
+    def unschedule_workout(self, workout_schedule_id: str) -> None:
+        """Remove one calendar entry while leaving its workout template intact."""
+        self._call(lambda client: client.unschedule_workout(workout_schedule_id))
+
+    def delete_workout(self, workout_id: str) -> None:
+        """Delete one workout template after its calendar entry has been replaced."""
+        self._call(lambda client: client.delete_workout(workout_id))
+
     def push_workout(
         self,
         workout_id: str,

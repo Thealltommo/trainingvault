@@ -196,9 +196,7 @@ export default function GarminSessionActions({
   const [devicesLoading, setDevicesLoading] = useState(false);
   const [deviceError, setDeviceError] = useState("");
   const [operationNotice, setOperationNotice] = useState("");
-  const [syncedSignature, setSyncedSignature] = useState<string | null>(() =>
-    readSyncedSignature(sessionId),
-  );
+  const [syncedSignature, setSyncedSignature] = useState<string | null>(null);
   const hasPrescription =
     Boolean(structuredWorkout) && (structuredWorkout?.steps.length ?? 0) > 0;
   const currentSignature = useMemo(
@@ -241,7 +239,11 @@ export default function GarminSessionActions({
     (needsReplacement || canPushExisting || canInitialSend || canRetry);
 
   useEffect(() => {
-    setSyncedSignature(readSyncedSignature(sessionId));
+    const timeoutId = window.setTimeout(
+      () => setSyncedSignature(readSyncedSignature(sessionId)),
+      0,
+    );
+    return () => window.clearTimeout(timeoutId);
   }, [sessionId]);
 
   useEffect(() => {
@@ -258,7 +260,11 @@ export default function GarminSessionActions({
     // are treated as the version already in Garmin. Edited/mismatched records are
     // deliberately not adopted so the user is offered an explicit replacement.
     writeSyncedSignature(sessionId, currentSignature);
-    setSyncedSignature(currentSignature);
+    const timeoutId = window.setTimeout(
+      () => setSyncedSignature(currentSignature),
+      0,
+    );
+    return () => window.clearTimeout(timeoutId);
   }, [
     currentSignature,
     hasExistingScheduledWorkout,

@@ -140,6 +140,10 @@ export type BlockResult = {
   notes?: string;
 };
 
+export type SessionExecution = "as_planned" | "modified" | "cut_short";
+export type SessionFeel = "strong" | "controlled" | "struggled";
+export type SessionRecoveryConcern = "none" | "monitor" | "protect_next";
+
 export type SessionLog = {
   id: string;
   workoutId: string;
@@ -155,6 +159,9 @@ export type SessionLog = {
   limiter?: string;
   result?: string;
   notes?: string;
+  execution?: SessionExecution;
+  sessionFeel?: SessionFeel;
+  recoveryConcern?: SessionRecoveryConcern;
   blockResults?: BlockResult[];
 };
 

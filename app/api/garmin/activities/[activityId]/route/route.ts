@@ -10,10 +10,62 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const nullableFiniteNumber = z.number().finite().nullable();
+const emptySummary = {
+  totalDurationSeconds: null,
+  movingDurationSeconds: null,
+  elapsedDurationSeconds: null,
+  runTimeSeconds: null,
+  walkTimeSeconds: null,
+  idleTimeSeconds: null,
+  distanceMeters: null,
+  averageSpeedMps: null,
+  averageMovingSpeedMps: null,
+  maxSpeedMps: null,
+  averageHeartRateBpm: null,
+  maxHeartRateBpm: null,
+  averageCadenceSpm: null,
+  maxCadenceSpm: null,
+  elevationGainMeters: null,
+  elevationLossMeters: null,
+  calories: null,
+  aerobicTrainingEffect: null,
+  anaerobicTrainingEffect: null,
+  minimumTemperatureC: null,
+  maximumTemperatureC: null,
+  primaryBenefit: null,
+} as const;
+
+const activitySummarySchema = z
+  .object({
+    totalDurationSeconds: nullableFiniteNumber,
+    movingDurationSeconds: nullableFiniteNumber,
+    elapsedDurationSeconds: nullableFiniteNumber,
+    runTimeSeconds: nullableFiniteNumber,
+    walkTimeSeconds: nullableFiniteNumber,
+    idleTimeSeconds: nullableFiniteNumber,
+    distanceMeters: nullableFiniteNumber,
+    averageSpeedMps: nullableFiniteNumber,
+    averageMovingSpeedMps: nullableFiniteNumber,
+    maxSpeedMps: nullableFiniteNumber,
+    averageHeartRateBpm: nullableFiniteNumber,
+    maxHeartRateBpm: nullableFiniteNumber,
+    averageCadenceSpm: nullableFiniteNumber,
+    maxCadenceSpm: nullableFiniteNumber,
+    elevationGainMeters: nullableFiniteNumber,
+    elevationLossMeters: nullableFiniteNumber,
+    calories: nullableFiniteNumber,
+    aerobicTrainingEffect: nullableFiniteNumber,
+    anaerobicTrainingEffect: nullableFiniteNumber,
+    minimumTemperatureC: nullableFiniteNumber,
+    maximumTemperatureC: nullableFiniteNumber,
+    primaryBenefit: z.string().max(160).nullable(),
+  })
+  .strict();
 
 const routeResponseSchema = z
   .object({
     activityId: z.string().regex(/^[1-9]\d{0,31}$/),
+    summary: activitySummarySchema.optional().default(emptySummary),
     points: z
       .array(
         z
@@ -75,7 +127,7 @@ const routeResponseSchema = z
       )
       .max(500)
       .default([]),
-    availableChannels: z.array(z.string().max(40)).max(20).default([]),
+    availableChannels: z.array(z.string().max(40)).max(24).default([]),
     sourceSampleCount: z.number().int().nonnegative().default(0),
   })
   .strict();

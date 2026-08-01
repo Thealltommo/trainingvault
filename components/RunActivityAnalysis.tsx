@@ -4,25 +4,29 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BarChart3,
+  Clock3,
   Footprints,
+  Gauge,
   HeartPulse,
   MapPinned,
   Mountain,
   Route,
+  Sparkles,
+  Thermometer,
   Timer,
-  TrendingDown,
-  TrendingUp,
   Zap,
 } from "lucide-react";
 import {
   Area,
   AreaChart,
   CartesianGrid,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { useGarminLocalState } from "@/lib/garmin-storage";
 import type {
   StructuredRunningStep,
   StructuredRunningWorkout,
@@ -79,6 +83,7 @@ type ChartDatum = {
   heartRate: number | null;
   cadence: number | null;
   elevation: number | null;
+  temperature: number | null;
 };
 
 type KilometreSplit = {
@@ -98,9 +103,24 @@ type ExpandedStep = {
   label: string;
 };
 
-type ClockPoint = {
-  distanceMeters: number;
-  seconds: number;
+type AxisMode = "distance" | "time";
+type ActivityTab = "overview" | "stats" | "intervals" | "charts";
+type IntervalFilter = "all" | "warmup" | "work" | "recovery" | "cooldown";
+type MovementState = "run" | "walk" | "idle";
+
+type MovementSummary = {
+  runSeconds: number;
+  walkSeconds: number;
+  idleSeconds: number;
+  segments: Array<{ state: MovementState; seconds: number }>;
+};
+
+const CHART_COLOURS = {
+  pace: "#58a6ff",
+  heartRate: "#ff5f6d",
+  cadence: "#e96cff",
+  elevation: "#d7ff2f",
+  temperature: "#b6bdc8",
 };
 
 function formatDuration(seconds: number | null | undefined) {
@@ -134,12 +154,31 @@ function formatDistance(meters: number | null | undefined) {
   return meters >= 1_000 ? `${(meters / 1_000).toFixed(2)} km` : `${Math.round(meters)} m`;
 }
 
+function formatSpeed(metersPerSecond: number | null | undefined) {
+  if (metersPerSecond == null || !Number.isFinite(metersPerSecond) || metersPerSecond <= 0) return "—";
+  return `${(metersPerSecond * 3.6).toFixed(1)} km/h`;
+}
+
 function average(values: Array<number | null | undefined>) {
   const finite = values.filter(
     (value): value is number => value != null && Number.isFinite(value),
   );
   if (finite.length === 0) return null;
   return finite.reduce((total, value) => total + value, 0) / finite.length;
+}
+
+function minimum(values: Array<number | null | undefined>) {
+  const finite = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  return finite.length ? Math.min(...finite) : null;
+}
+
+function maximum(values: Array<number | null | undefined>) {
+  const finite = values.filter(
+    (value): value is number => value != null && Number.isFinite(value),
+  );
+  return finite.length ? Math.max(...finite) : null;
 }
 
 function standardDeviation(values: Array<number | null | undefined>) {
@@ -177,9 +216,7 @@ function interpolateClock(samples: AnalysisSample[], distanceMeters: number) {
     const current = samples[index];
     const previousDistance = previous.distanceMeters;
     const currentDistance = current.distanceMeters;
-    if (previousDistance == null || currentDistance == null || currentDistance < distanceMeters) {
-      continue;
-    }
+    if (previousDistance == null || currentDistance == null || currentDistance < distanceMeters) continue;
     const span = Math.max(0.001, currentDistance - previousDistance);
     const ratio = Math.min(1, Math.max(0, (distanceMeters - previousDistance) / span));
     return sampleClock(previous) + (sampleClock(current) - sampleClock(previous)) * ratio;
@@ -193,9 +230,8 @@ function interpolateElevation(samples: AnalysisSample[], distanceMeters: number)
     (sample) => sample.distanceMeters != null && sample.elevationMeters != null,
   );
   if (withElevation.length === 0) return null;
-  if (distanceMeters <= (withElevation[0].distanceMeters ?? 0)) {
-    return withElevation[0].elevationMeters;
-  }
+  if (distanceMeters <= (withElevation[0].distanceMeters ?? 0)) return withElevation[0].elevationMeters;
+
   for (let index = 1; index < withElevation.length; index += 1) {
     const previous = withElevation[index - 1];
     const current = withElevation[index];
@@ -205,6 +241,7 @@ function interpolateElevation(samples: AnalysisSample[], distanceMeters: number)
     const ratio = (distanceMeters - previousDistance) / Math.max(0.001, currentDistance - previousDistance);
     return (previous.elevationMeters ?? 0) + ((current.elevationMeters ?? 0) - (previous.elevationMeters ?? 0)) * ratio;
   }
+
   return withElevation[withElevation.length - 1].elevationMeters;
 }
 
@@ -252,40 +289,21 @@ function buildKilometreSplits(samples: AnalysisSample[]): KilometreSplit[] {
   return result;
 }
 
-function buildClockPoints(samples: AnalysisSample[]): ClockPoint[] {
-  return monotonicSamples(samples)
-    .filter((sample) => sample.distanceMeters != null)
-    .map((sample) => ({
-      distanceMeters: sample.distanceMeters ?? 0,
-      seconds: sampleClock(sample),
-    }));
-}
-
-function interpolatedTime(points: ClockPoint[], distanceMeters: number) {
-  if (points.length === 0) return null;
-  if (distanceMeters <= points[0].distanceMeters) return points[0].seconds;
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    if (current.distanceMeters < distanceMeters) continue;
-    const ratio =
-      (distanceMeters - previous.distanceMeters) /
-      Math.max(0.001, current.distanceMeters - previous.distanceMeters);
-    return previous.seconds + (current.seconds - previous.seconds) * ratio;
-  }
-  return null;
+function interpolatedTime(samples: AnalysisSample[], distanceMeters: number) {
+  const ordered = monotonicSamples(samples);
+  return interpolateClock(ordered, distanceMeters);
 }
 
 function bestEffort(samples: AnalysisSample[], targetMeters: number) {
-  const points = buildClockPoints(samples);
-  if (points.length < 2 || (points.at(-1)?.distanceMeters ?? 0) < targetMeters) return null;
-
+  const ordered = monotonicSamples(samples);
+  if (ordered.length < 2 || (ordered.at(-1)?.distanceMeters ?? 0) < targetMeters) return null;
   let best: number | null = null;
-  for (const start of points) {
-    const finishDistance = start.distanceMeters + targetMeters;
-    const finishTime = interpolatedTime(points, finishDistance);
+
+  for (const start of ordered) {
+    const startDistance = start.distanceMeters ?? 0;
+    const finishTime = interpolatedTime(ordered, startDistance + targetMeters);
     if (finishTime == null) break;
-    const duration = finishTime - start.seconds;
+    const duration = finishTime - sampleClock(start);
     if (duration > 0 && (best == null || duration < best)) best = duration;
   }
   return best;
@@ -294,16 +312,16 @@ function bestEffort(samples: AnalysisSample[], targetMeters: number) {
 function rollingMedian(values: Array<number | null>, index: number, radius = 2) {
   const window = values
     .slice(Math.max(0, index - radius), index + radius + 1)
-    .filter((value): value is number => value != null && Number.isFinite(value));
+    .filter((value): value is number => value != null && Number.isFinite(value))
+    .sort((first, second) => first - second);
   if (window.length === 0) return null;
-  window.sort((first, second) => first - second);
   return window[Math.floor(window.length / 2)];
 }
 
 function buildChartData(samples: AnalysisSample[]): ChartDatum[] {
   const rawPaces = samples.map((sample) => {
     const pace = sample.paceSecondsPerKm;
-    return pace != null && pace >= 120 && pace <= 1_200 ? pace : null;
+    return pace != null && pace >= 120 && pace <= 1_800 ? pace : null;
   });
 
   return samples.map((sample, index) => ({
@@ -313,7 +331,44 @@ function buildChartData(samples: AnalysisSample[]): ChartDatum[] {
     heartRate: sample.heartRateBpm,
     cadence: sample.cadenceSpm,
     elevation: sample.elevationMeters,
+    temperature: sample.temperatureC,
   }));
+}
+
+function classifyMovement(previous: AnalysisSample, current: AnalysisSample): MovementState {
+  const distanceDelta = Math.max(0, (current.distanceMeters ?? 0) - (previous.distanceMeters ?? 0));
+  const movingDelta =
+    previous.movingSeconds == null || current.movingSeconds == null
+      ? null
+      : Math.max(0, current.movingSeconds - previous.movingSeconds);
+
+  if (distanceDelta < 0.4 && (movingDelta == null || movingDelta < 0.4)) return "idle";
+  if ((current.cadenceSpm ?? 0) >= 120 || (current.paceSecondsPerKm ?? 9_999) <= 600) return "run";
+  return "walk";
+}
+
+function buildMovementSummary(samples: AnalysisSample[]): MovementSummary {
+  const totals: Record<MovementState, number> = { run: 0, walk: 0, idle: 0 };
+  const segments: Array<{ state: MovementState; seconds: number }> = [];
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = samples[index - 1];
+    const current = samples[index];
+    const delta = Math.min(30, Math.max(0, current.elapsedSeconds - previous.elapsedSeconds));
+    if (delta <= 0) continue;
+    const state = classifyMovement(previous, current);
+    totals[state] += delta;
+    const last = segments.at(-1);
+    if (last?.state === state) last.seconds += delta;
+    else segments.push({ state, seconds: delta });
+  }
+
+  return {
+    runSeconds: totals.run,
+    walkSeconds: totals.walk,
+    idleSeconds: totals.idle,
+    segments,
+  };
 }
 
 function expandStructuredSteps(workout: StructuredRunningWorkout | null): ExpandedStep[] {
@@ -332,12 +387,11 @@ function expandStructuredSteps(workout: StructuredRunningWorkout | null): Expand
   };
 
   for (const element of workout.steps) {
-    if (element.kind === "step") {
-      push(element);
-      continue;
-    }
-    for (let repetition = 0; repetition < element.repetitions; repetition += 1) {
-      for (const step of element.steps) push(step);
+    if (element.kind === "step") push(element);
+    else {
+      for (let repetition = 0; repetition < element.repetitions; repetition += 1) {
+        for (const step of element.steps) push(step);
+      }
     }
   }
   return expanded;
@@ -359,6 +413,16 @@ function targetRead(split: AnalysisSplit, step: StructuredRunningStep | undefine
   if (pace < target.fastest) return `${Math.round(target.fastest - pace)}s fast`;
   if (pace > target.slowest) return `${Math.round(pace - target.slowest)}s slow`;
   return "On target";
+}
+
+function trainingEffectLabel(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "No reading";
+  if (value < 1) return "No meaningful benefit";
+  if (value < 2) return "Minor benefit";
+  if (value < 3) return "Maintaining";
+  if (value < 4) return "Improving";
+  if (value < 5) return "Highly improving";
+  return "Overreaching stimulus";
 }
 
 function RouteTrace({ points }: { points: AnalysisPoint[] }) {
@@ -416,70 +480,82 @@ function RouteTrace({ points }: { points: AnalysisPoint[] }) {
   );
 }
 
-function MetricChart({
+function AnalysisChart({
   title,
   subtitle,
-  icon: Icon,
   data,
   dataKey,
   formatter,
+  colour,
+  axisMode,
+  averageValue,
   reversed = false,
 }: {
   title: string;
   subtitle: string;
-  icon: typeof Activity;
   data: ChartDatum[];
-  dataKey: "pace" | "heartRate" | "cadence" | "elevation";
+  dataKey: "pace" | "heartRate" | "cadence" | "elevation" | "temperature";
   formatter: (value: number) => string;
+  colour: string;
+  axisMode: AxisMode;
+  averageValue?: number | null;
   reversed?: boolean;
 }) {
   const values = data
     .map((datum) => datum[dataKey])
     .filter((value): value is number => value != null && Number.isFinite(value));
   if (values.length < 3) return null;
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
-  const padding = Math.max(1, (maximum - minimum) * 0.12);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const padding = Math.max(1, (high - low) * 0.12);
+  const xKey = axisMode === "distance" ? "distanceKm" : "elapsedMinutes";
+  const gradientId = `run-${dataKey}`;
 
   return (
     <section className="rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.78)] p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="tv-label text-[var(--accent)]">{title}</p>
-          <p className="mt-1 text-sm font-bold text-[var(--muted)]">{subtitle}</p>
+          <p className="text-lg font-black text-[var(--text)]">{title}</p>
+          <p className="mt-1 text-xs font-bold text-[var(--muted)]">{subtitle}</p>
         </div>
-        <Icon className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
+        <div className="text-right">
+          <p className="text-xl font-black" style={{ color }}>{formatter(averageValue ?? average(values) ?? 0)}</p>
+          <p className="text-[0.58rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">Average</p>
+        </div>
       </div>
-      <div className="mt-4 h-56 w-full sm:h-64">
+      <div className="mt-4 h-56 w-full sm:h-72">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
             <defs>
-              <linearGradient id={`chart-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.38} />
-                <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.02} />
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={colour} stopOpacity={0.55} />
+                <stop offset="100%" stopColor={colour} stopOpacity={0.04} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" />
+            <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.07)" />
             <XAxis
-              dataKey="distanceKm"
+              dataKey={xKey}
               type="number"
               domain={["dataMin", "dataMax"]}
-              tickFormatter={(value) => `${Number(value).toFixed(1)}`}
-              tick={{ fill: "#8d948d", fontSize: 11, fontWeight: 700 }}
+              tickFormatter={(value) => axisMode === "distance" ? Number(value).toFixed(1) : formatDuration(Number(value) * 60)}
+              tick={{ fill: "#8d948d", fontSize: 10, fontWeight: 700 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
-              domain={[Math.max(0, minimum - padding), maximum + padding]}
+              domain={[Math.max(0, low - padding), high + padding]}
               reversed={reversed}
-              tickFormatter={(value) => formatter(Number(value)).replace("/km", "")}
-              tick={{ fill: "#8d948d", fontSize: 11, fontWeight: 700 }}
+              tickFormatter={(value) => formatter(Number(value)).replace("/km", "").replace(" bpm", "").replace(" spm", "")}
+              tick={{ fill: "#8d948d", fontSize: 10, fontWeight: 700 }}
               axisLine={false}
               tickLine={false}
-              width={54}
+              width={52}
             />
+            {averageValue != null ? (
+              <ReferenceLine y={averageValue} stroke="rgba(255,255,255,0.58)" strokeDasharray="5 4" />
+            ) : null}
             <Tooltip
-              cursor={{ stroke: "rgba(215,255,47,0.35)", strokeWidth: 1 }}
+              cursor={{ stroke: "rgba(255,255,255,0.35)", strokeWidth: 1 }}
               contentStyle={{
                 background: "#090b09",
                 border: "1px solid rgba(255,255,255,0.14)",
@@ -488,24 +564,26 @@ function MetricChart({
                 fontSize: 12,
                 fontWeight: 800,
               }}
-              labelFormatter={(value) => `${Number(value).toFixed(2)} km`}
+              labelFormatter={(value) => axisMode === "distance" ? `${Number(value).toFixed(2)} km` : formatDuration(Number(value) * 60)}
               formatter={(value) => [formatter(Number(value)), title]}
             />
             <Area
               type="monotone"
               dataKey={dataKey}
               connectNulls
-              stroke="var(--accent)"
-              strokeWidth={2.5}
-              fill={`url(#chart-${dataKey})`}
+              stroke={colour}
+              strokeWidth={2.4}
+              fill={`url(#${gradientId})`}
               dot={false}
-              activeDot={{ r: 4, fill: "var(--accent)", stroke: "#080a08" }}
+              activeDot={{ r: 4, fill: colour, stroke: "#080a08" }}
               isAnimationActive={false}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-1 text-center text-[0.62rem] font-black uppercase tracking-[0.14em] text-[var(--muted)]">Distance (km)</p>
+      <p className="mt-1 text-center text-[0.6rem] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+        {axisMode === "distance" ? "Distance (km)" : "Elapsed time"}
+      </p>
     </section>
   );
 }
@@ -522,24 +600,24 @@ function SplitBars({ splits }: { splits: KilometreSplit[] }) {
       <div className="flex items-end justify-between gap-3 border-b border-[var(--border)] px-4 py-4 sm:px-5">
         <div>
           <p className="tv-label text-[var(--accent)]">Splits</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight">Every kilometre</h2>
+          <h3 className="mt-1 text-2xl font-black tracking-tight">Every kilometre</h3>
         </div>
-        <p className="text-xs font-bold text-[var(--muted)]">Moving pace · HR · cadence</p>
+        <p className="text-xs font-bold text-[var(--muted)]">Pace · HR · cadence · elevation</p>
       </div>
       <div className="divide-y divide-[var(--border)] px-4 sm:px-5">
         {splits.map((split) => {
           const strength = (slowest - split.paceSecondsPerKm) / range;
-          const width = 52 + strength * 48;
+          const width = 48 + strength * 52;
           return (
             <div key={`${split.index}-${split.label}`} className="grid grid-cols-[2.3rem_minmax(0,1fr)_4.2rem] items-center gap-3 py-3">
               <div>
                 <p className="text-sm font-black text-[var(--text)]">{split.label}</p>
-                {!split.complete ? <p className="text-[0.58rem] font-black uppercase text-[var(--muted)]">partial</p> : null}
+                {!split.complete ? <p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">partial</p> : null}
               </div>
               <div className="min-w-0">
                 <div className="h-7 rounded-sm bg-white/[0.045]">
                   <div
-                    className="grid h-full min-w-16 place-items-end rounded-sm bg-[linear-gradient(90deg,rgba(215,255,47,0.52),var(--accent))] px-2 text-[0.64rem] font-black text-black"
+                    className="grid h-full min-w-16 place-items-end rounded-sm bg-[linear-gradient(90deg,#397fc8,#58a6ff)] px-2 text-[0.64rem] font-black text-white"
                     style={{ width: `${width}%` }}
                   >
                     {formatPace(split.paceSecondsPerKm).replace("/km", "")}
@@ -562,60 +640,200 @@ function SplitBars({ splits }: { splits: KilometreSplit[] }) {
   );
 }
 
-function WorkoutSplits({
+function StatSection({ title, rows }: { title: string; rows: Array<{ label: string; value: string }> }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.78)]">
+      <h3 className="border-b border-[var(--border)] bg-black/25 px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.14em] text-[var(--muted)]">{title}</h3>
+      <dl className="divide-y divide-[var(--border)]">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-4 px-4 py-3.5">
+            <dt className="text-sm font-bold text-[var(--muted)]">{row.label}</dt>
+            <dd className="text-right text-sm font-black text-[var(--text)]">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function TrainingEffect({ aerobic, anaerobic }: { aerobic: number | null | undefined; anaerobic: number | null | undefined }) {
+  const items = [
+    { label: "Aerobic", value: aerobic, colour: "var(--accent)" },
+    { label: "Anaerobic", value: anaerobic, colour: "#58a6ff" },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.78)] p-4 sm:p-5">
+      <div className="flex items-center gap-2">
+        <Activity className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
+        <h3 className="text-xl font-black">Training effect</h3>
+      </div>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2">
+        {items.map((item) => {
+          const bounded = Math.min(5, Math.max(0, item.value ?? 0));
+          return (
+            <div key={item.label}>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-[0.64rem] font-black uppercase tracking-[0.13em] text-[var(--muted)]">{item.label}</p>
+                  <p className="mt-1 text-3xl font-black" style={{ color: item.colour }}>{item.value?.toFixed(1) ?? "—"}</p>
+                </div>
+                <p className="max-w-32 text-right text-xs font-bold text-[var(--muted)]">{trainingEffectLabel(item.value)}</p>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.07]">
+                <div className="h-full rounded-full" style={{ width: `${(bounded / 5) * 100}%`, background: item.colour }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MovementTimeline({ summary }: { summary: MovementSummary }) {
+  const total = summary.runSeconds + summary.walkSeconds + summary.idleSeconds;
+  if (total <= 0) return null;
+  const colours: Record<MovementState, string> = {
+    run: "var(--accent)",
+    walk: "#58a6ff",
+    idle: "#555c57",
+  };
+
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.78)] p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-lg font-black">Run / walk</p>
+          <p className="mt-1 text-xs font-bold text-[var(--muted)]">Derived from movement, cadence and pace channels</p>
+        </div>
+        <Footprints className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
+      </div>
+      <div className="mt-5 grid grid-cols-3 gap-2">
+        <div><p className="text-[0.58rem] font-black uppercase text-[var(--muted)]">Run</p><p className="mt-1 text-xl font-black">{formatDuration(summary.runSeconds)}</p></div>
+        <div><p className="text-[0.58rem] font-black uppercase text-[var(--muted)]">Walk</p><p className="mt-1 text-xl font-black">{formatDuration(summary.walkSeconds)}</p></div>
+        <div><p className="text-[0.58rem] font-black uppercase text-[var(--muted)]">Idle</p><p className="mt-1 text-xl font-black">{formatDuration(summary.idleSeconds)}</p></div>
+      </div>
+      <div className="mt-5 flex h-10 overflow-hidden rounded-lg bg-white/[0.04]">
+        {summary.segments.map((segment, index) => (
+          <div
+            key={`${segment.state}-${index}`}
+            title={`${segment.state}: ${formatDuration(segment.seconds)}`}
+            style={{ width: `${(segment.seconds / total) * 100}%`, background: colours[segment.state] }}
+            className="min-w-px opacity-90"
+          />
+        ))}
+      </div>
+      <div className="mt-2 flex gap-4 text-[0.58rem] font-black uppercase tracking-[0.1em] text-[var(--muted)]">
+        {(["run", "walk", "idle"] as MovementState[]).map((state) => (
+          <span key={state} className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full" style={{ background: colours[state] }} />{state}</span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function IntervalsPanel({
   splits,
   structuredWorkout,
 }: {
   splits: AnalysisSplit[];
   structuredWorkout: StructuredRunningWorkout | null;
 }) {
-  if (splits.length === 0) return null;
+  const [filter, setFilter] = useState<IntervalFilter>("all");
   const expanded = expandStructuredSteps(structuredWorkout);
   const matched = expanded.length === splits.length ? expanded : [];
 
+  const rows = splits.map((split, index) => {
+    const matchedStep = matched[index];
+    const rawType = (split.splitType ?? "").toLowerCase();
+    let phase: Exclude<IntervalFilter, "all"> = "work";
+    if (matchedStep) phase = matchedStep.step.phase;
+    else if (rawType.includes("warm")) phase = "warmup";
+    else if (rawType.includes("recover") || rawType.includes("rest")) phase = "recovery";
+    else if (rawType.includes("cool")) phase = "cooldown";
+    const label = matchedStep?.label ?? split.splitType ?? `Interval ${split.splitIndex}`;
+    return { split, matchedStep, phase, label };
+  });
+
+  const visible = filter === "all" ? rows : rows.filter((row) => row.phase === filter);
+  const filters: Array<{ key: IntervalFilter; label: string }> = [
+    { key: "all", label: "All" },
+    { key: "warmup", label: "Warm up" },
+    { key: "work", label: "Run" },
+    { key: "recovery", label: "Recovery" },
+    { key: "cooldown", label: "Cool down" },
+  ];
+
+  if (splits.length === 0) {
+    return <section className="rounded-2xl border border-[var(--border)] p-5 text-sm font-bold text-[var(--muted)]">Garmin has not returned interval rows for this activity.</section>;
+  }
+
   return (
     <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.78)]">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] px-4 py-4 sm:px-5">
-        <div>
-          <p className="tv-label text-[var(--accent)]">Lap analysis</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight">Workout reps and recorded laps</h2>
+      <div className="border-b border-[var(--border)] p-4 sm:p-5">
+        <p className="tv-label text-[var(--accent)]">Workout execution</p>
+        <h3 className="mt-1 text-2xl font-black">Intervals</h3>
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {filters.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setFilter(item.key)}
+              className={`shrink-0 rounded-full border px-4 py-2 text-xs font-black ${filter === item.key ? "border-[var(--accent)] bg-[var(--accent)] text-black" : "border-[var(--border)] bg-black/25 text-[var(--muted)]"}`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
-        <p className="text-xs font-bold text-[var(--muted)]">{matched.length ? "Matched to prescription" : `${splits.length} Garmin laps`}</p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[48rem] border-collapse text-left">
+
+      <div className="divide-y divide-[var(--border)] md:hidden">
+        {visible.map(({ split, matchedStep, phase, label }) => {
+          const read = targetRead(split, matchedStep?.step);
+          return (
+            <article key={`${split.splitIndex}-${label}`} className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[0.58rem] font-black uppercase tracking-[0.12em] text-[var(--accent)]">{phase}</p>
+                  <h4 className="mt-1 text-lg font-black">{label}</h4>
+                </div>
+                {read ? <span className={`rounded-full px-2.5 py-1 text-[0.6rem] font-black ${read === "On target" ? "bg-[var(--accent)] text-black" : "bg-white/10 text-[var(--text)]"}`}>{read}</span> : null}
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Time</p><p className="mt-1 text-sm font-black">{formatDuration(split.durationSeconds)}</p></div>
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Distance</p><p className="mt-1 text-sm font-black">{formatDistance(split.distanceMeters)}</p></div>
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Pace</p><p className="mt-1 text-sm font-black">{formatPace(split.averagePaceSecondsPerKm)}</p></div>
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Avg HR</p><p className="mt-1 text-sm font-black">{formatHeartRate(split.averageHeartRateBpm)}</p></div>
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Max HR</p><p className="mt-1 text-sm font-black">{formatHeartRate(split.maxHeartRateBpm)}</p></div>
+                <div><p className="text-[0.55rem] font-black uppercase text-[var(--muted)]">Cadence</p><p className="mt-1 text-sm font-black">{formatCadence(split.averageCadenceSpm)}</p></div>
+              </div>
+              {targetPace(matchedStep?.step) ? <p className="mt-3 text-xs font-bold text-[var(--muted)]">Target {targetPace(matchedStep?.step)?.label}</p> : null}
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[56rem] border-collapse text-left">
           <thead>
-            <tr className="border-b border-[var(--border)] text-[0.62rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">
-              <th className="px-4 py-3 sm:px-5">Lap</th>
-              <th className="px-3 py-3">Distance</th>
-              <th className="px-3 py-3">Time</th>
-              <th className="px-3 py-3">Pace</th>
-              <th className="px-3 py-3">Avg / max HR</th>
-              <th className="px-3 py-3">Cadence</th>
-              <th className="px-3 py-3">Target</th>
-              <th className="px-4 py-3 sm:px-5">Read</th>
+            <tr className="border-b border-[var(--border)] text-[0.6rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">
+              <th className="px-5 py-3">Step</th><th className="px-3 py-3">Time</th><th className="px-3 py-3">Distance</th><th className="px-3 py-3">Pace</th><th className="px-3 py-3">Avg HR</th><th className="px-3 py-3">Max HR</th><th className="px-3 py-3">Cadence</th><th className="px-5 py-3">Target</th>
             </tr>
           </thead>
           <tbody>
-            {splits.map((split, index) => {
-              const step = matched[index];
-              const read = targetRead(split, step?.step);
-              const work = step?.step.phase === "work";
+            {visible.map(({ split, matchedStep, phase, label }) => {
+              const read = targetRead(split, matchedStep?.step);
               return (
-                <tr key={`${split.splitIndex}-${index}`} className={`border-b border-[var(--border)] last:border-b-0 ${work ? "bg-[rgba(215,255,47,0.045)]" : ""}`}>
-                  <td className="px-4 py-3 sm:px-5">
-                    <div className="flex items-center gap-2">
-                      {work ? <span className="h-2 w-2 rounded-full bg-[var(--accent)]" /> : null}
-                      <span className="text-sm font-black text-[var(--text)]">{step?.label ?? `Lap ${split.splitIndex}`}</span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-sm font-bold text-[var(--muted)]">{formatDistance(split.distanceMeters)}</td>
-                  <td className="px-3 py-3 text-sm font-bold text-[var(--muted)]">{formatDuration(split.movingDurationSeconds ?? split.durationSeconds)}</td>
-                  <td className="px-3 py-3 text-sm font-black text-[var(--text)]">{formatPace(split.averagePaceSecondsPerKm)}</td>
-                  <td className="px-3 py-3 text-sm font-bold text-[var(--muted)]">{formatHeartRate(split.averageHeartRateBpm)} / {split.maxHeartRateBpm == null ? "—" : Math.round(split.maxHeartRateBpm)}</td>
-                  <td className="px-3 py-3 text-sm font-bold text-[var(--muted)]">{formatCadence(split.averageCadenceSpm)}</td>
-                  <td className="px-3 py-3 text-sm font-bold text-[var(--muted)]">{targetPace(step?.step)?.label ?? "—"}</td>
-                  <td className={`px-4 py-3 text-sm font-black sm:px-5 ${read === "On target" ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>{read ?? "Recorded"}</td>
+                <tr key={`${split.splitIndex}-${label}`} className={`border-b border-[var(--border)] last:border-b-0 ${phase === "work" ? "bg-[rgba(215,255,47,0.035)]" : ""}`}>
+                  <td className="px-5 py-3"><p className="text-sm font-black">{label}</p><p className="text-[0.56rem] font-black uppercase text-[var(--muted)]">{phase}</p></td>
+                  <td className="px-3 py-3 text-sm font-bold">{formatDuration(split.durationSeconds)}</td>
+                  <td className="px-3 py-3 text-sm font-bold">{formatDistance(split.distanceMeters)}</td>
+                  <td className="px-3 py-3 text-sm font-black">{formatPace(split.averagePaceSecondsPerKm)}</td>
+                  <td className="px-3 py-3 text-sm font-bold">{formatHeartRate(split.averageHeartRateBpm)}</td>
+                  <td className="px-3 py-3 text-sm font-bold">{formatHeartRate(split.maxHeartRateBpm)}</td>
+                  <td className="px-3 py-3 text-sm font-bold">{formatCadence(split.averageCadenceSpm)}</td>
+                  <td className="px-5 py-3"><p className="text-sm font-bold">{targetPace(matchedStep?.step)?.label ?? "—"}</p>{read ? <p className={`mt-1 text-[0.58rem] font-black uppercase ${read === "On target" ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>{read}</p> : null}</td>
                 </tr>
               );
             })}
@@ -635,6 +853,10 @@ export default function RunActivityAnalysis({
 }) {
   const [analysis, setAnalysis] = useState<ActivityAnalysisPayload | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "empty">("loading");
+  const [tab, setTab] = useState<ActivityTab>("overview");
+  const [axisMode, setAxisMode] = useState<AxisMode>("time");
+  const garmin = useGarminLocalState();
+  const activity = garmin.activities.find((record) => record.activity.activityId === activityId)?.activity ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -657,72 +879,67 @@ export default function RunActivityAnalysis({
     return () => controller.abort();
   }, [activityId]);
 
-  const chartData = useMemo(
-    () => buildChartData(analysis?.samples ?? []),
-    [analysis?.samples],
-  );
-  const kilometreSplits = useMemo(
-    () => buildKilometreSplits(analysis?.samples ?? []),
-    [analysis?.samples],
-  );
-  const execution = useMemo(() => {
+  const chartData = useMemo(() => buildChartData(analysis?.samples ?? []), [analysis?.samples]);
+  const kilometreSplits = useMemo(() => buildKilometreSplits(analysis?.samples ?? []), [analysis?.samples]);
+  const movement = useMemo(() => buildMovementSummary(analysis?.samples ?? []), [analysis?.samples]);
+
+  const derived = useMemo(() => {
     const samples = analysis?.samples ?? [];
     const ordered = monotonicSamples(samples);
-    const totalDistance = ordered.at(-1)?.distanceMeters ?? 0;
-    const half = totalDistance / 2;
-    const startClock = interpolateClock(ordered, ordered[0]?.distanceMeters ?? 0);
-    const halfClock = interpolateClock(ordered, half);
-    const finishClock = interpolateClock(ordered, totalDistance);
-    const firstPace =
-      startClock == null || halfClock == null || half <= 0
-        ? null
-        : (halfClock - startClock) / (half / 1_000);
-    const secondPace =
-      halfClock == null || finishClock == null || totalDistance - half <= 0
-        ? null
-        : (finishClock - halfClock) / ((totalDistance - half) / 1_000);
-    const firstHr = average(
-      ordered
-        .filter((sample) => (sample.distanceMeters ?? 0) <= half)
-        .map((sample) => sample.heartRateBpm),
-    );
-    const secondHr = average(
-      ordered
-        .filter((sample) => (sample.distanceMeters ?? 0) > half)
-        .map((sample) => sample.heartRateBpm),
-    );
-    const cadenceMean = average(samples.map((sample) => sample.cadenceSpm));
+    const totalDistance = activity?.distanceMeters ?? ordered.at(-1)?.distanceMeters ?? null;
+    const elapsed = ordered.at(-1)?.elapsedSeconds ?? activity?.durationSeconds ?? null;
+    const moving = activity?.movingDurationSeconds ?? ordered.at(-1)?.movingSeconds ?? null;
+    const averagePace = activity?.averagePaceSecondsPerKm ?? (totalDistance && elapsed ? elapsed / (totalDistance / 1_000) : null);
+    const movingPace = totalDistance && moving ? moving / (totalDistance / 1_000) : null;
+    const validPaces = samples.map((sample) => sample.paceSecondsPerKm).filter((value): value is number => value != null && value >= 120 && value <= 1_800);
+    const bestPace = minimum(validPaces);
+    const averageCadence = activity?.averageCadenceSpm ?? average(samples.map((sample) => sample.cadenceSpm));
+    const maxCadence = maximum(samples.map((sample) => sample.cadenceSpm));
+    const averageHr = activity?.averageHeartRateBpm ?? average(samples.map((sample) => sample.heartRateBpm));
+    const maxHr = activity?.maxHeartRateBpm ?? maximum(samples.map((sample) => sample.heartRateBpm));
+    const minimumTemperature = minimum(samples.map((sample) => sample.temperatureC));
+    const maximumTemperature = maximum(samples.map((sample) => sample.temperatureC));
     const cadenceSd = standardDeviation(samples.map((sample) => sample.cadenceSpm));
+    const half = (totalDistance ?? 0) / 2;
+    const startClock = ordered.length ? interpolateClock(ordered, ordered[0].distanceMeters ?? 0) : null;
+    const halfClock = interpolateClock(ordered, half);
+    const finishClock = interpolateClock(ordered, totalDistance ?? 0);
+    const firstPace = startClock == null || halfClock == null || half <= 0 ? null : (halfClock - startClock) / (half / 1_000);
+    const secondPace = halfClock == null || finishClock == null || (totalDistance ?? 0) - half <= 0 ? null : (finishClock - halfClock) / (((totalDistance ?? 0) - half) / 1_000);
+    const firstHr = average(ordered.filter((sample) => (sample.distanceMeters ?? 0) <= half).map((sample) => sample.heartRateBpm));
+    const secondHr = average(ordered.filter((sample) => (sample.distanceMeters ?? 0) > half).map((sample) => sample.heartRateBpm));
+
     return {
+      totalDistance,
+      elapsed,
+      moving,
+      averagePace,
+      movingPace,
+      bestPace,
+      averageSpeed: activity?.averageSpeedMps ?? (averagePace ? 1_000 / averagePace : null),
+      movingSpeed: movingPace ? 1_000 / movingPace : null,
+      maxSpeed: bestPace ? 1_000 / bestPace : null,
+      averageCadence,
+      maxCadence,
+      cadenceVariation: averageCadence && cadenceSd ? (cadenceSd / averageCadence) * 100 : null,
+      averageHr,
+      maxHr,
+      minimumTemperature,
+      maximumTemperature,
       best400: bestEffort(samples, 400),
       best1k: bestEffort(samples, 1_000),
       best5k: bestEffort(samples, 5_000),
       firstPace,
       secondPace,
-      paceChange:
-        firstPace == null || secondPace == null ? null : secondPace - firstPace,
+      paceChange: firstPace == null || secondPace == null ? null : secondPace - firstPace,
       firstHr,
       secondHr,
-      hrDrift:
-        firstHr == null || secondHr == null || firstHr <= 0
-          ? null
-          : ((secondHr - firstHr) / firstHr) * 100,
-      cadenceMean,
-      cadenceVariation:
-        cadenceMean == null || cadenceSd == null || cadenceMean <= 0
-          ? null
-          : (cadenceSd / cadenceMean) * 100,
+      hrDrift: firstHr == null || secondHr == null || firstHr <= 0 ? null : ((secondHr - firstHr) / firstHr) * 100,
     };
-  }, [analysis?.samples]);
+  }, [activity, analysis?.samples]);
 
   if (status === "loading") {
-    return (
-      <section className="rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.72)] p-5">
-        <div className="h-4 w-28 animate-pulse rounded bg-white/10" />
-        <div className="mt-3 h-8 w-72 max-w-full animate-pulse rounded bg-white/10" />
-        <div className="mt-5 h-56 animate-pulse rounded-xl bg-white/[0.045]" />
-      </section>
-    );
+    return <section className="rounded-2xl border border-[var(--border)] p-5"><div className="h-5 w-32 animate-pulse rounded bg-white/10" /><div className="mt-4 h-64 animate-pulse rounded-xl bg-white/[0.045]" /></section>;
   }
 
   if (status === "empty" || !analysis) {
@@ -730,154 +947,129 @@ export default function RunActivityAnalysis({
       <section className="rounded-2xl border border-[var(--border)] bg-[rgba(10,13,10,0.72)] p-5">
         <p className="tv-label text-[var(--accent)]">Detailed run analysis</p>
         <h2 className="mt-2 text-2xl font-black">Waiting for Garmin chart data</h2>
-        <p className="mt-2 max-w-3xl text-sm font-bold leading-relaxed text-[var(--muted)]">
-          The activity summary is available, but Garmin did not return its recorded samples or laps for this activity. Refresh the Garmin sync after the watch has fully uploaded it.
-        </p>
+        <p className="mt-2 max-w-3xl text-sm font-bold leading-relaxed text-[var(--muted)]">The activity summary is available, but Garmin has not returned its recorded samples or intervals yet. Refresh after the watch has fully uploaded the activity.</p>
       </section>
     );
   }
 
-  const fastestSplit = kilometreSplits
-    .filter((split) => split.complete)
-    .sort((first, second) => first.paceSecondsPerKm - second.paceSecondsPerKm)[0];
-  const PaceTrendIcon = (execution.paceChange ?? 0) <= 0 ? TrendingUp : TrendingDown;
+  const fastestSplit = kilometreSplits.filter((split) => split.complete).sort((first, second) => first.paceSecondsPerKm - second.paceSecondsPerKm)[0];
+  const tabs: Array<{ key: ActivityTab; label: string; icon: typeof Route }> = [
+    { key: "overview", label: "Overview", icon: Sparkles },
+    { key: "stats", label: "Stats", icon: Gauge },
+    { key: "intervals", label: "Intervals", icon: Timer },
+    { key: "charts", label: "Charts", icon: BarChart3 },
+  ];
 
   return (
-    <div className="grid gap-5">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] pb-4">
-        <div>
-          <p className="tv-label text-[var(--accent)]">Activity lab</p>
-          <h2 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">The complete run</h2>
-          <p className="mt-2 max-w-3xl text-sm font-bold text-[var(--muted)]">
-            Splits, recorded physiology, terrain and workout execution from the Garmin activity trace.
-          </p>
+    <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[rgba(7,9,7,0.78)]">
+      <header className="border-b border-[var(--border)] px-4 pb-0 pt-5 sm:px-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="tv-label text-[var(--accent)]">Activity analysis</p>
+            <h2 className="mt-1 text-3xl font-black tracking-tight">Your complete run</h2>
+          </div>
+          <p className="rounded-full border border-[var(--border)] bg-black/45 px-3 py-2 text-[0.58rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">{analysis.sourceSampleCount.toLocaleString("en-GB")} samples · {analysis.availableChannels.length} channels</p>
         </div>
-        <div className="rounded-full border border-[var(--border)] bg-black/50 px-3 py-2 text-[0.64rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">
-          {analysis.sourceSampleCount.toLocaleString("en-GB")} source samples · {analysis.availableChannels.length} channels
-        </div>
+        <nav className="mt-5 flex gap-1 overflow-x-auto" aria-label="Activity analysis sections">
+          {tabs.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.key} type="button" onClick={() => setTab(item.key)} className={`flex min-h-12 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-black transition ${tab === item.key ? "border-[var(--accent)] text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"}`}>
+                <Icon className="h-4 w-4" aria-hidden="true" />{item.label}
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
-      {analysis.points.length > 1 ? <RouteTrace points={analysis.points} /> : null}
+      <div className="p-4 sm:p-6">
+        {tab === "overview" ? (
+          <div className="grid gap-5">
+            {analysis.points.length > 1 ? <RouteTrace points={analysis.points} /> : null}
+            <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { label: "Fastest km", value: fastestSplit ? formatPace(fastestSplit.paceSecondsPerKm) : "—", detail: fastestSplit ? `Split ${fastestSplit.index}` : "No full kilometre", icon: Zap },
+                { label: "Best 1 km", value: formatDuration(derived.best1k), detail: derived.best1k ? formatPace(derived.best1k) : "Unavailable", icon: Timer },
+                { label: "Best 5 km", value: formatDuration(derived.best5k), detail: derived.best5k ? formatPace((derived.best5k ?? 0) / 5) : "Run shorter than 5 km", icon: Route },
+                { label: "HR drift", value: derived.hrDrift == null ? "—" : `${derived.hrDrift > 0 ? "+" : ""}${derived.hrDrift.toFixed(1)}%`, detail: derived.firstHr == null ? "No complete HR trace" : `${formatHeartRate(derived.firstHr)} → ${formatHeartRate(derived.secondHr)}`, icon: HeartPulse },
+              ].map((metric) => {
+                const Icon = metric.icon;
+                return <article key={metric.label} className="rounded-xl border border-[var(--border)] bg-black/30 p-3.5"><div className="flex items-center justify-between"><p className="text-[0.58rem] font-black uppercase tracking-[0.12em] text-[var(--muted)]">{metric.label}</p><Icon className="h-4 w-4 text-[var(--accent)]" /></div><p className="mt-3 text-xl font-black">{metric.value}</p><p className="mt-1 text-[0.62rem] font-bold text-[var(--muted)]">{metric.detail}</p></article>;
+              })}
+            </section>
+            <TrainingEffect aerobic={activity?.aerobicTrainingEffect} anaerobic={activity?.anaerobicTrainingEffect} />
+            <SplitBars splits={kilometreSplits} />
+          </div>
+        ) : null}
 
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {[
-          {
-            label: "Fastest km",
-            value: fastestSplit ? formatPace(fastestSplit.paceSecondsPerKm) : "—",
-            detail: fastestSplit ? `Split ${fastestSplit.index}` : "Needs a full kilometre",
-            icon: Zap,
-          },
-          {
-            label: "Best 1 km",
-            value: formatDuration(execution.best1k),
-            detail: execution.best1k ? formatPace(execution.best1k) : "Trace unavailable",
-            icon: Timer,
-          },
-          {
-            label: "Best 5 km",
-            value: formatDuration(execution.best5k),
-            detail: execution.best5k ? formatPace((execution.best5k ?? 0) / 5) : "Run shorter than 5 km",
-            icon: Route,
-          },
-          {
-            label: "Avg cadence",
-            value: formatCadence(execution.cadenceMean),
-            detail: execution.cadenceVariation == null ? "No cadence channel" : `${execution.cadenceVariation.toFixed(1)}% variation`,
-            icon: Footprints,
-          },
-        ].map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <article key={metric.label} className="rounded-xl border border-[var(--border)] bg-[rgba(10,13,10,0.74)] p-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[0.62rem] font-black uppercase tracking-[0.13em] text-[var(--muted)]">{metric.label}</p>
-                <Icon className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
+        {tab === "stats" ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <StatSection title="Pace" rows={[
+              { label: "Average pace", value: formatPace(derived.averagePace) },
+              { label: "Average moving pace", value: formatPace(derived.movingPace) },
+              { label: "Best pace", value: formatPace(derived.bestPace) },
+            ]} />
+            <StatSection title="Speed" rows={[
+              { label: "Average speed", value: formatSpeed(derived.averageSpeed) },
+              { label: "Average moving speed", value: formatSpeed(derived.movingSpeed) },
+              { label: "Maximum speed", value: formatSpeed(derived.maxSpeed) },
+            ]} />
+            <StatSection title="Timing" rows={[
+              { label: "Total time", value: formatDuration(activity?.durationSeconds ?? derived.elapsed) },
+              { label: "Moving time", value: formatDuration(derived.moving) },
+              { label: "Elapsed time", value: formatDuration(derived.elapsed) },
+            ]} />
+            <StatSection title="Run / walk detection" rows={[
+              { label: "Run time", value: formatDuration(movement.runSeconds) },
+              { label: "Walk time", value: formatDuration(movement.walkSeconds) },
+              { label: "Idle time", value: formatDuration(movement.idleSeconds) },
+            ]} />
+            <StatSection title="Heart rate" rows={[
+              { label: "Average heart rate", value: formatHeartRate(derived.averageHr) },
+              { label: "Maximum heart rate", value: formatHeartRate(derived.maxHr) },
+              { label: "Second-half drift", value: derived.hrDrift == null ? "—" : `${derived.hrDrift > 0 ? "+" : ""}${derived.hrDrift.toFixed(1)}%` },
+            ]} />
+            <StatSection title="Cadence" rows={[
+              { label: "Average cadence", value: formatCadence(derived.averageCadence) },
+              { label: "Maximum cadence", value: formatCadence(derived.maxCadence) },
+              { label: "Variation", value: derived.cadenceVariation == null ? "—" : `${derived.cadenceVariation.toFixed(1)}%` },
+            ]} />
+            <StatSection title="Elevation" rows={[
+              { label: "Ascent", value: activity?.elevationGainMeters == null ? "—" : `${Math.round(activity.elevationGainMeters)} m` },
+              { label: "Descent", value: activity?.elevationLossMeters == null ? "—" : `${Math.round(activity.elevationLossMeters)} m` },
+              { label: "Distance", value: formatDistance(derived.totalDistance) },
+            ]} />
+            <StatSection title="Environment & load" rows={[
+              { label: "Minimum temperature", value: derived.minimumTemperature == null ? "—" : `${Math.round(derived.minimumTemperature)}°C` },
+              { label: "Maximum temperature", value: derived.maximumTemperature == null ? "—" : `${Math.round(derived.maximumTemperature)}°C` },
+              { label: "Calories", value: activity?.calories == null ? "—" : `${Math.round(activity.calories)} kcal` },
+              { label: "Aerobic training effect", value: activity?.aerobicTrainingEffect == null ? "—" : `${activity.aerobicTrainingEffect.toFixed(1)} · ${trainingEffectLabel(activity.aerobicTrainingEffect)}` },
+              { label: "Anaerobic training effect", value: activity?.anaerobicTrainingEffect == null ? "—" : `${activity.anaerobicTrainingEffect.toFixed(1)} · ${trainingEffectLabel(activity.anaerobicTrainingEffect)}` },
+            ]} />
+          </div>
+        ) : null}
+
+        {tab === "intervals" ? <IntervalsPanel splits={analysis.splits} structuredWorkout={structuredWorkout} /> : null}
+
+        {tab === "charts" ? (
+          <div className="grid gap-5">
+            <div className="flex justify-end">
+              <div className="grid grid-cols-2 rounded-xl border border-[var(--border)] bg-black/35 p-1">
+                {(["time", "distance"] as AxisMode[]).map((mode) => (
+                  <button key={mode} type="button" onClick={() => setAxisMode(mode)} className={`rounded-lg px-5 py-2 text-xs font-black capitalize ${axisMode === mode ? "bg-[var(--accent)] text-black" : "text-[var(--muted)]"}`}>{mode}</button>
+                ))}
               </div>
-              <p className="mt-3 text-xl font-black tracking-tight text-[var(--text)] sm:text-2xl">{metric.value}</p>
-              <p className="mt-1 text-[0.65rem] font-bold text-[var(--muted)]">{metric.detail}</p>
-            </article>
-          );
-        })}
-      </section>
-
-      <SplitBars splits={kilometreSplits} />
-
-      <section className="grid gap-3 md:grid-cols-3">
-        <article className="rounded-xl border border-[var(--border)] bg-[rgba(10,13,10,0.74)] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="tv-label">Second-half pace</p>
-            <PaceTrendIcon className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
+            </div>
+            <AnalysisChart title="Pace" subtitle="Recorded pace with recoveries and stops visible." data={chartData} dataKey="pace" formatter={formatPace} colour={CHART_COLOURS.pace} axisMode={axisMode} averageValue={derived.averagePace} reversed />
+            <AnalysisChart title="Heart rate" subtitle="Cardiovascular response across the session." data={chartData} dataKey="heartRate" formatter={(value) => `${Math.round(value)} bpm`} colour={CHART_COLOURS.heartRate} axisMode={axisMode} averageValue={derived.averageHr} />
+            <TrainingEffect aerobic={activity?.aerobicTrainingEffect} anaerobic={activity?.anaerobicTrainingEffect} />
+            <AnalysisChart title="Cadence" subtitle="Running steps per minute. Recovery walking remains visible." data={chartData} dataKey="cadence" formatter={(value) => `${Math.round(value)} spm`} colour={CHART_COLOURS.cadence} axisMode={axisMode} averageValue={derived.averageCadence} />
+            <AnalysisChart title="Elevation" subtitle="Recorded terrain profile." data={chartData} dataKey="elevation" formatter={(value) => `${Math.round(value)} m`} colour={CHART_COLOURS.elevation} axisMode={axisMode} />
+            <AnalysisChart title="Temperature" subtitle="Watch-recorded ambient temperature where available." data={chartData} dataKey="temperature" formatter={(value) => `${Math.round(value)}°C`} colour={CHART_COLOURS.temperature} axisMode={axisMode} />
+            <MovementTimeline summary={movement} />
           </div>
-          <p className="mt-3 text-2xl font-black">{execution.paceChange == null ? "—" : `${execution.paceChange > 0 ? "+" : ""}${Math.round(execution.paceChange)} sec/km`}</p>
-          <p className="mt-2 text-xs font-bold leading-relaxed text-[var(--muted)]">
-            {execution.paceChange == null
-              ? "Not enough distance trace to compare halves."
-              : execution.paceChange <= -5
-                ? "You finished faster than you started."
-                : execution.paceChange >= 10
-                  ? "Pace faded in the second half. Terrain and workout structure still matter."
-                  : "Pacing remained broadly even across the run."}
-          </p>
-        </article>
-        <article className="rounded-xl border border-[var(--border)] bg-[rgba(10,13,10,0.74)] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="tv-label">Heart-rate drift</p>
-            <HeartPulse className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-          </div>
-          <p className="mt-3 text-2xl font-black">{execution.hrDrift == null ? "—" : `${execution.hrDrift > 0 ? "+" : ""}${execution.hrDrift.toFixed(1)}%`}</p>
-          <p className="mt-2 text-xs font-bold leading-relaxed text-[var(--muted)]">
-            {execution.hrDrift == null
-              ? "No complete heart-rate trace was returned."
-              : `First half ${formatHeartRate(execution.firstHr)} · second half ${formatHeartRate(execution.secondHr)}. This is context, not a standalone recovery verdict.`}
-          </p>
-        </article>
-        <article className="rounded-xl border border-[var(--border)] bg-[rgba(10,13,10,0.74)] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <p className="tv-label">Trace quality</p>
-            <BarChart3 className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-          </div>
-          <p className="mt-3 text-2xl font-black">{analysis.availableChannels.length} channels</p>
-          <p className="mt-2 text-xs font-bold leading-relaxed text-[var(--muted)]">
-            {analysis.availableChannels.join(" · ").replaceAll("_", " ")}. Missing channels remain blank rather than being estimated.
-          </p>
-        </article>
-      </section>
-
-      <MetricChart
-        title="Pace"
-        subtitle="Smoothed recorded pace. Sharp troughs usually represent stops or recoveries."
-        icon={Zap}
-        data={chartData}
-        dataKey="pace"
-        formatter={formatPace}
-        reversed
-      />
-      <MetricChart
-        title="Heart rate"
-        subtitle="Recorded effort response across the run."
-        icon={HeartPulse}
-        data={chartData}
-        dataKey="heartRate"
-        formatter={(value) => `${Math.round(value)} bpm`}
-      />
-      <MetricChart
-        title="Cadence"
-        subtitle="Total running steps per minute where the watch supplied cadence."
-        icon={Footprints}
-        data={chartData}
-        dataKey="cadence"
-        formatter={(value) => `${Math.round(value)} spm`}
-      />
-      <MetricChart
-        title="Elevation"
-        subtitle="Terrain profile from the recorded activity stream."
-        icon={Mountain}
-        data={chartData}
-        dataKey="elevation"
-        formatter={(value) => `${Math.round(value)} m`}
-      />
-
-      <WorkoutSplits splits={analysis.splits} structuredWorkout={structuredWorkout} />
-    </div>
+        ) : null}
+      </div>
+    </section>
   );
 }

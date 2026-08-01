@@ -9,6 +9,8 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const nullableFiniteNumber = z.number().finite().nullable();
+
 const routeResponseSchema = z
   .object({
     activityId: z.string().regex(/^[1-9]\d{0,31}$/),
@@ -18,8 +20,8 @@ const routeResponseSchema = z
           .object({
             lat: z.number().finite().min(-90).max(90),
             lon: z.number().finite().min(-180).max(180),
-            elevationMeters: z.number().finite().nullable(),
-            distanceMeters: z.number().finite().nullable(),
+            elevationMeters: nullableFiniteNumber,
+            distanceMeters: nullableFiniteNumber,
             timeMs: z.number().int().nullable(),
           })
           .strict(),
@@ -34,6 +36,45 @@ const routeResponseSchema = z
       })
       .strict()
       .nullable(),
+    samples: z
+      .array(
+        z
+          .object({
+            elapsedSeconds: z.number().finite().nonnegative(),
+            movingSeconds: nullableFiniteNumber,
+            distanceMeters: nullableFiniteNumber,
+            paceSecondsPerKm: nullableFiniteNumber,
+            heartRateBpm: nullableFiniteNumber,
+            cadenceSpm: nullableFiniteNumber,
+            elevationMeters: nullableFiniteNumber,
+            gradePercent: nullableFiniteNumber,
+            temperatureC: nullableFiniteNumber,
+          })
+          .strict(),
+      )
+      .max(1_200),
+    splits: z
+      .array(
+        z
+          .object({
+            splitIndex: z.number().int().positive(),
+            splitType: z.string().max(80).nullable(),
+            durationSeconds: nullableFiniteNumber,
+            movingDurationSeconds: nullableFiniteNumber,
+            distanceMeters: nullableFiniteNumber,
+            averagePaceSecondsPerKm: nullableFiniteNumber,
+            averageHeartRateBpm: nullableFiniteNumber,
+            maxHeartRateBpm: nullableFiniteNumber,
+            averageCadenceSpm: nullableFiniteNumber,
+            elevationGainMeters: nullableFiniteNumber,
+            elevationLossMeters: nullableFiniteNumber,
+            calories: nullableFiniteNumber,
+          })
+          .strict(),
+      )
+      .max(500),
+    availableChannels: z.array(z.string().max(40)).max(20),
+    sourceSampleCount: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -55,7 +96,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       `/activities/${activityId}/route`,
       routeResponseSchema,
       {},
-      20_000,
+      25_000,
     );
     return NextResponse.json(route, {
       headers: { "Cache-Control": "private, max-age=300" },

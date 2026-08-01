@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import AppShell from "@/components/AppShell";
+import CompletedReviewRedirect from "@/components/CompletedReviewRedirect";
 import "./globals.css";
 import "./polish.css";
 import "./editorial.css";
@@ -34,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="min-h-full antialiased">
+        <CompletedReviewRedirect />
         <AppShell>{children}</AppShell>
       </body>
     </html>

@@ -35,6 +35,43 @@ function relativeDifference(actual: number, planned: number) {
   return Math.abs(actual - planned) / planned;
 }
 
+function normalizeTitle(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replaceAll("&", " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function titleSimilarityScore(
+  activityTitle: string | null,
+  sessionTitle: string,
+) {
+  const actual = normalizeTitle(activityTitle);
+  const planned = normalizeTitle(sessionTitle);
+
+  if (!actual || !planned) return 0;
+  if (actual === planned) return 40;
+
+  if (
+    Math.min(actual.length, planned.length) >= 8 &&
+    (actual.includes(planned) || planned.includes(actual))
+  ) {
+    return 24;
+  }
+
+  const actualTokens = new Set(actual.split(" "));
+  const plannedTokens = new Set(planned.split(" "));
+  const overlap = [...actualTokens].filter((token) => plannedTokens.has(token)).length;
+  const union = new Set([...actualTokens, ...plannedTokens]).size;
+  const similarity = union > 0 ? overlap / union : 0;
+
+  if (similarity >= 0.75) return 22;
+  if (similarity >= 0.5) return 10;
+  return 0;
+}
+
 function addSimilarityScore(
   actual: number | null,
   planned: number | null | undefined,
@@ -99,6 +136,12 @@ function scoreCandidate(
     reasons.push("adjacent_date");
   }
 
+  // Garmin frequently omits the originating workout ID from completed
+  // treadmill activities. An exact title on the same day is strong,
+  // deterministic evidence and prevents a planned session from remaining
+  // needlessly unlinked after it was sent to the watch by TrainVault.
+  score += titleSimilarityScore(activity.title, session.title);
+
   if (session.plannedStartTime && activity.startTime) {
     const plannedTime = Date.parse(session.plannedStartTime);
     const activityTime = Date.parse(activity.startTime);
@@ -119,9 +162,7 @@ function scoreCandidate(
     10,
   );
   score += distance.score;
-  if (distance.reason) {
-    reasons.push(distance.reason);
-  }
+  if (distance.reason) reasons.push(distance.reason);
 
   const duration = addSimilarityScore(
     activity.durationSeconds,
@@ -131,9 +172,7 @@ function scoreCandidate(
     8,
   );
   score += duration.score;
-  if (duration.reason) {
-    reasons.push(duration.reason);
-  }
+  if (duration.reason) reasons.push(duration.reason);
 
   return {
     sessionId: session.sessionId,
@@ -181,7 +220,8 @@ export function matchGarminActivity(
   const alternatives = candidates.slice(1);
   const runnerUp = alternatives[0];
   const exactWorkoutMatch = best.reasons.includes("garmin_workout_id");
-  const competingExactMatch = runnerUp?.reasons.includes("garmin_workout_id") ?? false;
+  const competingExactMatch =
+    runnerUp?.reasons.includes("garmin_workout_id") ?? false;
   const clearLead =
     !runnerUp || best.score - runnerUp.score >= AMBIGUOUS_MARGIN;
 

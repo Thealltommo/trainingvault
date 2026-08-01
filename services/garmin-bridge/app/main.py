@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping
 from datetime import date
 from typing import Annotated
 
@@ -10,9 +11,10 @@ from fastapi import Body, Depends, FastAPI, Path, Query, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
+from .activity_analysis import normalize_activity_analysis
 from .auth import GarminClientProvider, LocalTokenStore
 from .config import Settings
-from .errors import GarminBridgeError, GarminBridgeUnauthorized
+from .errors import GarminBridgeError, GarminBridgeUnauthorized, GarminInvalidResponse
 from .gateway import GarminGateway
 from .models import (
     ActivitiesResponse,
@@ -206,7 +208,20 @@ def create_app(
         activity_id: ActivityId,
         garmin: GarminGateway = Depends(get_gateway),
     ) -> ActivityRouteResponse:
-        return garmin.activity_route(activity_id)
+        """Return a bounded route, time series and split bank for one activity."""
+        details = garmin._call(  # noqa: SLF001 - app-internal gateway boundary
+            lambda client: client.get_activity_details(
+                activity_id,
+                maxchart=2_000,
+                maxpoly=1_200,
+            )
+        )
+        if not isinstance(details, Mapping):
+            raise GarminInvalidResponse()
+        splits = garmin._call(  # noqa: SLF001 - app-internal gateway boundary
+            lambda client: client.get_activity_splits(activity_id)
+        )
+        return normalize_activity_analysis(activity_id, details, splits)
 
     @api.get(
         "/recovery/{snapshot_date}",

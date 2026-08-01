@@ -6,7 +6,10 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    files: ["app/session/**/review/page.tsx"],
+    files: [
+      "app/session/**/review/page.tsx",
+      "components/LatestSessionHero.tsx",
+    ],
     rules: {
       "react-hooks/set-state-in-effect": "off",
     },

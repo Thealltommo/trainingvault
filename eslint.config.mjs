@@ -6,7 +6,7 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    files: ["app/session/[id]/review/page.tsx"],
+    files: ["app/session/**/review/page.tsx"],
     rules: {
       "react-hooks/set-state-in-effect": "off",
     },

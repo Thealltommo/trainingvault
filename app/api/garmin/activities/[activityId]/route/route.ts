@@ -52,7 +52,8 @@ const routeResponseSchema = z
           })
           .strict(),
       )
-      .max(1_200),
+      .max(1_200)
+      .default([]),
     splits: z
       .array(
         z
@@ -72,9 +73,10 @@ const routeResponseSchema = z
           })
           .strict(),
       )
-      .max(500),
-    availableChannels: z.array(z.string().max(40)).max(20),
-    sourceSampleCount: z.number().int().nonnegative(),
+      .max(500)
+      .default([]),
+    availableChannels: z.array(z.string().max(40)).max(20).default([]),
+    sourceSampleCount: z.number().int().nonnegative().default(0),
   })
   .strict();
 

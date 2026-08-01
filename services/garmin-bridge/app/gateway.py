@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import date
-from math import isfinite
 from typing import Any, TypeVar
 
 from garminconnect import Garmin
@@ -15,6 +14,7 @@ from garminconnect.exceptions import (
     GarminConnectTooManyRequestsError,
 )
 
+from .activity_analysis import normalize_activity_analysis
 from .auth import GarminClientProvider
 from .errors import (
     GarminAuthenticationRequired,
@@ -25,7 +25,6 @@ from .errors import (
 )
 from .models import (
     ActivitiesResponse,
-    ActivityResponse,
     DailyRecoveryResponse,
     DevicesResponse,
     LatestActivityResponse,
@@ -43,7 +42,7 @@ from .normalizers import (
     normalize_recovery,
     normalize_training_status,
 )
-from .route_models import ActivityRouteBounds, ActivityRoutePoint, ActivityRouteResponse
+from .route_models import ActivityRouteResponse
 from .workouts import to_garmin_running_workout
 
 T = TypeVar("T")
@@ -115,57 +114,32 @@ class GarminGateway:
         )
 
     def activity_route(self, activity_id: str) -> ActivityRouteResponse:
-        """Return only bounded GPS geometry required for TrainVault's private trace."""
-        raw = self._call(
-            lambda client: client.get_activity_details(
+        """Return bounded activity summary, chart channels, splits and GPS geometry."""
+
+        def fetch(client: Garmin) -> tuple[Any, Any, Any]:
+            details = client.get_activity_details(
                 activity_id,
-                maxchart=1,
-                maxpoly=1_200,
+                maxchart=4_000,
+                maxpoly=1_500,
             )
-        )
-        if not isinstance(raw, Mapping):
+            try:
+                splits = client.get_activity_splits(activity_id)
+            except GarminConnectNotFoundError:
+                splits = {}
+            try:
+                summary = client.get_activity(activity_id)
+            except GarminConnectNotFoundError:
+                summary = {}
+            return details, splits, summary
+
+        details, splits, summary = self._call(fetch)
+        if not isinstance(details, Mapping):
             raise GarminInvalidResponse()
-
-        geo = raw.get("geoPolylineDTO")
-        if not isinstance(geo, Mapping):
-            return ActivityRouteResponse(activity_id=activity_id)
-
-        polyline = geo.get("polyline")
-        if not isinstance(polyline, list):
-            return ActivityRouteResponse(activity_id=activity_id)
-
-        points: list[ActivityRoutePoint] = []
-        for item in polyline[:1_500]:
-            if not isinstance(item, Mapping):
-                continue
-            lat = _route_number(item.get("lat"))
-            lon = _route_number(item.get("lon"))
-            if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
-                continue
-            points.append(
-                ActivityRoutePoint(
-                    lat=lat,
-                    lon=lon,
-                    elevation_meters=_route_number(item.get("altitude")),
-                    distance_meters=_route_number(item.get("distanceInMeters")),
-                    time_ms=_route_int(item.get("time")),
-                )
-            )
-
-        if not points:
-            return ActivityRouteResponse(activity_id=activity_id)
-
-        lats = [point.lat for point in points]
-        lons = [point.lon for point in points]
-        return ActivityRouteResponse(
-            activity_id=activity_id,
-            points=points,
-            bounds=ActivityRouteBounds(
-                min_lat=min(lats),
-                max_lat=max(lats),
-                min_lon=min(lons),
-                max_lon=max(lons),
-            ),
+        return normalize_activity_analysis(
+            activity_id,
+            details,
+            splits,
+            summary if isinstance(summary, Mapping) else None,
         )
 
     def recovery(self, snapshot_date: date) -> DailyRecoveryResponse:
@@ -194,7 +168,6 @@ class GarminGateway:
             except GarminConnectNotFoundError:
                 raw[name] = None
                 unavailable.append(name)
-                # A confirmed "no data" is still a successful upstream response.
                 successful_calls += 1
             except GarminConnectTooManyRequestsError as exc:
                 raise GarminRateLimited() from exc
@@ -337,26 +310,6 @@ class GarminGateway:
             workout_id=workout_id,
             device_id=resolved_device_id,
         )
-
-
-def _route_number(value: Any) -> float | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if isfinite(parsed) else None
-
-
-def _route_int(value: Any) -> int | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed
 
 
 def _identifier(value: Any) -> str | None:

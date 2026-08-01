@@ -3,9 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { CalendarDays, Check, Clock, Dumbbell, Gauge, Pin, Play } from "lucide-react";
+import CompletedSessionReview from "@/components/CompletedSessionReview";
 import WorkoutMovePanel from "@/components/WorkoutMovePanel";
+import { useGarminLocalState } from "@/lib/garmin-storage";
 import { HERO_IMAGES, getHeroImageForWorkout } from "@/lib/hero-images";
-import { applyWorkoutOverride, useWorkoutOverrides } from "@/lib/storage";
+import { applyWorkoutOverride, useSessionLogs, useWorkoutOverrides } from "@/lib/storage";
 import type { Workout, WorkoutOverride } from "@/lib/types";
 
 type WorkoutCardVariant = "default" | "featured" | "compact";
@@ -192,11 +194,28 @@ export default function WorkoutCard({
 }: WorkoutCardProps) {
   const originalWorkout = sourceWorkout ?? workout;
   const overrides = useWorkoutOverrides();
+  const logs = useSessionLogs();
+  const garmin = useGarminLocalState();
   const override = overrides[originalWorkout.id] ?? null;
   const effectiveWorkout = applyWorkoutOverride(originalWorkout, override);
   const heroSrc = getHeroImageForWorkout(effectiveWorkout, index);
   const featured = variant === "featured";
   const compact = variant === "compact";
+  const latestLog = logs
+    .filter((log) => log.workoutId === effectiveWorkout.id)
+    .sort(
+      (first, second) =>
+        new Date(second.completedAt).getTime() -
+        new Date(first.completedAt).getTime(),
+    )[0] ?? null;
+  const linkedActivityId = Object.values(garmin.activityLinks).find(
+    (link) => link.sessionId === effectiveWorkout.id,
+  )?.activityId;
+  const linkedActivity =
+    garmin.activities.find(
+      (record) => record.activity.activityId === linkedActivityId,
+    )?.activity ?? null;
+  const reviewHref = completed && href ? `${href}#post-session-review` : href;
   const titleClass = featured
     ? "break-words text-4xl font-black uppercase leading-none text-[var(--text)] sm:text-5xl"
     : compact
@@ -281,16 +300,25 @@ export default function WorkoutCard({
           </div>
         ) : null}
 
+        {featured && completed ? (
+          <CompletedSessionReview
+            workout={effectiveWorkout}
+            log={latestLog}
+            activity={linkedActivity}
+            compact
+          />
+        ) : null}
+
         <div className="mt-auto flex flex-wrap gap-2">
-          {href ? (
-            <Link href={href} className="tv-button-primary min-w-32">
+          {reviewHref ? (
+            <Link href={reviewHref} className="tv-button-primary min-w-32">
               <Play className="h-4 w-4" aria-hidden="true" />
               {ctaLabel ?? (featured ? "Start Session" : "Open")}
             </Link>
           ) : null}
-          {featured && href ? (
-            <Link href={href} className="tv-button-ghost">
-              Details
+          {featured && reviewHref ? (
+            <Link href={reviewHref} className="tv-button-ghost">
+              {completed ? "Debrief" : "Details"}
             </Link>
           ) : null}
           {onSetToday ? (

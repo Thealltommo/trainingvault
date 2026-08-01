@@ -77,7 +77,7 @@ function isRunningActivity(value: string | null | undefined) {
 }
 
 function coachRead(input: {
-  activityType: string | null;
+  activityType: string;
   aerobicTrainingEffect: number | null;
   anaerobicTrainingEffect: number | null;
   averageHeartRateBpm: number | null;

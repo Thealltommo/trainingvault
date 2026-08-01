@@ -1,8 +1,8 @@
 """Bounded activity analysis extraction for TrainVault.
 
 Garmin activity details are positional and device-dependent. This module maps
-only the channels TrainVault uses into a stable, privacy-preserving response.
-Raw Garmin payloads never cross the bridge boundary.
+only the summary and channels TrainVault uses into a stable, privacy-preserving
+response. Raw Garmin payloads never cross the bridge boundary.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from garminconnect import parse_activity_detail_metrics
 from .route_models import (
     ActivityAnalysisSample,
     ActivityAnalysisSplit,
+    ActivityAnalysisSummary,
     ActivityRouteBounds,
     ActivityRoutePoint,
     ActivityRouteResponse,
@@ -99,6 +100,15 @@ def _cadence(sample: Mapping[str, Any]) -> float | None:
     return _plausible(cadence, 40, 300)
 
 
+def _summary_cadence(value: Any) -> float | None:
+    cadence = _number(value)
+    if cadence is None:
+        return None
+    if 35 <= cadence < 100:
+        cadence *= 2
+    return _plausible(cadence, 0, 300)
+
+
 def _downsample[T](values: list[T], limit: int) -> list[T]:
     if len(values) <= limit:
         return values
@@ -113,6 +123,95 @@ def _downsample[T](values: list[T], limit: int) -> list[T]:
         result.append(values[index])
     result.append(values[-1])
     return result
+
+
+def _analysis_summary(raw: Mapping[str, Any] | None) -> ActivityAnalysisSummary:
+    if raw is None:
+        return ActivityAnalysisSummary()
+
+    return ActivityAnalysisSummary(
+        total_duration_seconds=_seconds(
+            _first(raw, "duration", "durationSeconds", "totalTime")
+        ),
+        moving_duration_seconds=_seconds(
+            _first(raw, "movingDuration", "movingDurationSeconds", "movingTime")
+        ),
+        elapsed_duration_seconds=_seconds(
+            _first(raw, "elapsedDuration", "elapsedDurationSeconds", "elapsedTime")
+        ),
+        run_time_seconds=_seconds(
+            _first(raw, "runTime", "runningTime", "runningDuration")
+        ),
+        walk_time_seconds=_seconds(
+            _first(raw, "walkTime", "walkingTime", "walkingDuration")
+        ),
+        idle_time_seconds=_seconds(
+            _first(raw, "idleTime", "idleDuration", "stoppedTime")
+        ),
+        distance_meters=_number(_first(raw, "distance", "distanceMeters")),
+        average_speed_mps=_number(
+            _first(raw, "averageSpeed", "averageSpeedMps")
+        ),
+        average_moving_speed_mps=_number(
+            _first(
+                raw,
+                "averageMovingSpeed",
+                "avgMovingSpeed",
+                "averageMovingSpeedMps",
+            )
+        ),
+        max_speed_mps=_number(_first(raw, "maxSpeed", "maximumSpeed", "maxSpeedMps")),
+        average_heart_rate_bpm=_plausible(
+            _number(_first(raw, "averageHR", "averageHeartRate")), 20, 260
+        ),
+        max_heart_rate_bpm=_plausible(
+            _number(_first(raw, "maxHR", "maxHeartRate")), 20, 260
+        ),
+        average_cadence_spm=_summary_cadence(
+            _first(
+                raw,
+                "averageRunningCadenceInStepsPerMinute",
+                "averageRunCadence",
+                "averageRunningCadence",
+                "averageCadence",
+            )
+        ),
+        max_cadence_spm=_summary_cadence(
+            _first(
+                raw,
+                "maxRunningCadenceInStepsPerMinute",
+                "maxRunCadence",
+                "maxRunningCadence",
+                "maxCadence",
+            )
+        ),
+        elevation_gain_meters=_number(
+            _first(raw, "elevationGain", "elevationGainMeters")
+        ),
+        elevation_loss_meters=_number(
+            _first(raw, "elevationLoss", "elevationLossMeters")
+        ),
+        calories=_number(raw.get("calories")),
+        aerobic_training_effect=_number(
+            _first(raw, "aerobicTrainingEffect", "trainingEffect")
+        ),
+        anaerobic_training_effect=_number(raw.get("anaerobicTrainingEffect")),
+        minimum_temperature_c=_plausible(
+            _number(_first(raw, "minTemperature", "minimumTemperature")), -100, 100
+        ),
+        maximum_temperature_c=_plausible(
+            _number(_first(raw, "maxTemperature", "maximumTemperature")), -100, 100
+        ),
+        primary_benefit=_text(
+            _first(
+                raw,
+                "trainingEffectLabel",
+                "aerobicTrainingEffectMessage",
+                "primaryBenefit",
+                "trainingEffectDescription",
+            )
+        ),
+    )
 
 
 def _route_points(details: Mapping[str, Any]) -> list[ActivityRoutePoint]:
@@ -269,17 +368,13 @@ def _analysis_splits(raw_splits: Any) -> list[ActivityAnalysisSplit]:
                 max_heart_rate_bpm=_plausible(
                     _number(_first(raw, "maxHR", "maxHeartRate")), 20, 260
                 ),
-                average_cadence_spm=_plausible(
-                    _number(
-                        _first(
-                            raw,
-                            "averageRunCadence",
-                            "averageRunningCadence",
-                            "averageCadence",
-                        )
-                    ),
-                    20,
-                    300,
+                average_cadence_spm=_summary_cadence(
+                    _first(
+                        raw,
+                        "averageRunCadence",
+                        "averageRunningCadence",
+                        "averageCadence",
+                    )
                 ),
                 elevation_gain_meters=_number(
                     _first(raw, "elevationGain", "elevationGainMeters")
@@ -297,7 +392,9 @@ def normalize_activity_analysis(
     activity_id: str,
     details: Mapping[str, Any],
     raw_splits: Any,
+    raw_summary: Mapping[str, Any] | None = None,
 ) -> ActivityRouteResponse:
+    summary = _analysis_summary(raw_summary)
     points = _route_points(details)
     samples, source_sample_count = _analysis_samples(details)
     splits = _analysis_splits(raw_splits)
@@ -316,6 +413,7 @@ def normalize_activity_analysis(
     channels = [
         name
         for name, present in (
+            ("summary", any(value is not None for value in summary.model_dump().values())),
             ("pace", any(item.pace_seconds_per_km is not None for item in samples)),
             ("heart_rate", any(item.heart_rate_bpm is not None for item in samples)),
             ("cadence", any(item.cadence_spm is not None for item in samples)),
@@ -330,6 +428,7 @@ def normalize_activity_analysis(
 
     return ActivityRouteResponse(
         activity_id=activity_id,
+        summary=summary,
         points=points,
         bounds=bounds,
         samples=samples,

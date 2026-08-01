@@ -38,8 +38,34 @@ export type AnalysisSplit = {
   calories: number | null;
 };
 
+export type ActivityAnalysisSummary = {
+  totalDurationSeconds: number | null;
+  movingDurationSeconds: number | null;
+  elapsedDurationSeconds: number | null;
+  runTimeSeconds: number | null;
+  walkTimeSeconds: number | null;
+  idleTimeSeconds: number | null;
+  distanceMeters: number | null;
+  averageSpeedMps: number | null;
+  averageMovingSpeedMps: number | null;
+  maxSpeedMps: number | null;
+  averageHeartRateBpm: number | null;
+  maxHeartRateBpm: number | null;
+  averageCadenceSpm: number | null;
+  maxCadenceSpm: number | null;
+  elevationGainMeters: number | null;
+  elevationLossMeters: number | null;
+  calories: number | null;
+  aerobicTrainingEffect: number | null;
+  anaerobicTrainingEffect: number | null;
+  minimumTemperatureC: number | null;
+  maximumTemperatureC: number | null;
+  primaryBenefit: string | null;
+};
+
 export type ActivityAnalysisPayload = {
   activityId: string;
+  summary: ActivityAnalysisSummary;
   points: AnalysisPoint[];
   samples: AnalysisSample[];
   splits: AnalysisSplit[];

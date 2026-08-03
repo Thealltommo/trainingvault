@@ -49,9 +49,62 @@ type RouteState = {
   route: RouteResponse | null;
 };
 
+type LatestEvidence = {
+  record: GarminStoredActivity | null;
+  log: SessionLog | null;
+  sessionId: string | null;
+  timestamp: number;
+};
+
 function timestamp(value: string | null | undefined) {
   const parsed = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function datePart(value: string | null | undefined) {
+  return value?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+}
+
+function normalizeTitle(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replaceAll("&", " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function titlesDescribeSameSession(
+  activityTitle: string | null,
+  workoutTitle: string,
+) {
+  const activity = normalizeTitle(activityTitle);
+  const workout = normalizeTitle(workoutTitle);
+
+  if (!activity || !workout) return false;
+  if (activity === workout) return true;
+  if (Math.min(activity.length, workout.length) < 8) return false;
+  return activity.includes(workout) || workout.includes(activity);
+}
+
+function durationIsCompatible(
+  record: GarminStoredActivity,
+  log: SessionLog,
+) {
+  const actualSeconds = record.activity.durationSeconds;
+  const loggedMinutes = log.actualDurationMinutes;
+
+  if (!actualSeconds || !loggedMinutes) return true;
+  return Math.abs(actualSeconds / 60 - loggedMinutes) / loggedMinutes <= 0.25;
+}
+
+function activityTimestamp(record: GarminStoredActivity) {
+  const start = timestamp(
+    record.activity.localStartTime ??
+      record.activity.startTime ??
+      record.importedAt,
+  );
+  return start + Math.max(0, record.activity.durationSeconds ?? 0) * 1_000;
 }
 
 function formatDuration(seconds: number | null | undefined) {
@@ -115,6 +168,9 @@ function coachRead(record: GarminStoredActivity | null, log: SessionLog | null) 
     const aerobic = activity.aerobicTrainingEffect ?? 0;
     const anaerobic = activity.anaerobicTrainingEffect ?? 0;
 
+    if (log?.rpe && log.rpe >= 8) {
+      return "Garmin confirms the work, and your feedback says the cost was high. Protect the next hard session until recovery supports it.";
+    }
     if (aerobic >= 4 || anaerobic >= 3.5) {
       return "A meaningful training hit. Use the interval and chart views to check whether the cost came from the intended work or from pace drift and recovery breakdown.";
     }
@@ -125,7 +181,7 @@ function coachRead(record: GarminStoredActivity | null, log: SessionLog | null) 
       return "The vertical load matters as much as distance here. Review the route, elevation and heart-rate response before placing the next quality session.";
     }
     if (isRunning(record)) {
-      return "The activity is ready for a proper review: kilometre splits, structured intervals, pace, heart rate, cadence and training effect are all available in one place.";
+      return "Garmin evidence and your athlete feedback now describe one session. Review the route, splits, heart rate and training effect before the next decision.";
     }
     return "This session is now part of the athlete history. Its value comes from how it changes the next decision, not from another isolated score.";
   }
@@ -137,7 +193,7 @@ function coachRead(record: GarminStoredActivity | null, log: SessionLog | null) 
     if (log.limiter) {
       return `You logged ${log.limiter} as the limiter. Keep that visible when the next session is adapted.`;
     }
-    return "The session is logged. Recovery and the next planned stimulus now decide whether this was productive load or simply more load.";
+    return "The session is logged. Garmin evidence will be merged into this record automatically when the watch activity arrives.";
   }
 
   return "Complete a session or sync Garmin to unlock the latest-session review.";
@@ -160,10 +216,7 @@ function RouteTrace({ route }: { route: RouteResponse }) {
     const averageLat =
       route.points.reduce((total, point) => total + point.lat, 0) /
       route.points.length;
-    const lonScale = Math.max(
-      0.2,
-      Math.cos((averageLat * Math.PI) / 180),
-    );
+    const lonScale = Math.max(0.2, Math.cos((averageLat * Math.PI) / 180));
     const points = samplePoints(route.points).map((point) => ({
       x: point.lon * lonScale,
       y: point.lat,
@@ -356,46 +409,81 @@ export default function LatestSessionHero() {
     route: null,
   });
 
-  const latestGarmin = useMemo(
-    () =>
-      [...garmin.activities].sort((first, second) => {
-        const firstTime = timestamp(
-          first.activity.startTime ??
-            first.activity.localStartTime ??
-            first.importedAt,
-        );
-        const secondTime = timestamp(
-          second.activity.startTime ??
-            second.activity.localStartTime ??
-            second.importedAt,
-        );
-        return secondTime - firstTime;
-      })[0] ?? null,
-    [garmin.activities],
-  );
+  const latest = useMemo<LatestEvidence | null>(() => {
+    const logsByWorkout = new Map<string, SessionLog>();
 
-  const latestLog = useMemo(
-    () =>
-      [...logs].sort(
-        (first, second) =>
-          timestamp(second.completedAt) - timestamp(first.completedAt),
-      )[0] ?? null,
-    [logs],
-  );
+    for (const log of [...logs].sort(
+      (first, second) => timestamp(second.completedAt) - timestamp(first.completedAt),
+    )) {
+      if (!logsByWorkout.has(log.workoutId)) {
+        logsByWorkout.set(log.workoutId, log);
+      }
+    }
 
-  const garminTime = latestGarmin
-    ? timestamp(
-        latestGarmin.activity.startTime ??
-          latestGarmin.activity.localStartTime ??
-          latestGarmin.importedAt,
-      )
-    : 0;
-  const logTime = latestLog ? timestamp(latestLog.completedAt) : 0;
-  const useGarmin = Boolean(latestGarmin && garminTime >= logTime);
-  const activity = useGarmin ? latestGarmin?.activity ?? null : null;
-  const log = !useGarmin ? latestLog : null;
+    const representedLogs = new Set<string>();
+    const candidates: LatestEvidence[] = garmin.activities.map((record) => {
+      const activityId = record.activity.activityId;
+      const explicitSessionId = activityId
+        ? garmin.activityLinks[activityId]?.sessionId ?? null
+        : null;
+      const matchedSessionId =
+        record.match.kind === "matched" ? record.match.candidate.sessionId : null;
+      let sessionId = explicitSessionId ?? matchedSessionId;
+      let attachedLog = sessionId ? logsByWorkout.get(sessionId) ?? null : null;
+
+      if (!attachedLog) {
+        const activityDate = datePart(
+          record.activity.localStartTime ?? record.activity.startTime,
+        );
+        const fallbackLogs = logs.filter((log) => {
+          const logDate = datePart(log.completedAt) ?? log.workoutDate ?? null;
+          return (
+            activityDate === logDate &&
+            titlesDescribeSameSession(record.activity.title, log.workoutTitle) &&
+            durationIsCompatible(record, log)
+          );
+        });
+
+        if (fallbackLogs.length === 1) {
+          attachedLog = fallbackLogs[0];
+          sessionId = attachedLog.workoutId;
+        }
+      }
+
+      if (attachedLog) {
+        representedLogs.add(attachedLog.id);
+      }
+
+      return {
+        record,
+        log: attachedLog,
+        sessionId,
+        timestamp: Math.max(
+          activityTimestamp(record),
+          attachedLog ? timestamp(attachedLog.completedAt) : 0,
+        ),
+      };
+    });
+
+    for (const log of logs) {
+      if (!representedLogs.has(log.id)) {
+        candidates.push({
+          record: null,
+          log,
+          sessionId: log.workoutId,
+          timestamp: timestamp(log.completedAt),
+        });
+      }
+    }
+
+    return candidates.sort((first, second) => second.timestamp - first.timestamp)[0] ?? null;
+  }, [garmin.activities, garmin.activityLinks, logs]);
+
+  const selectedRecord = latest?.record ?? null;
+  const activity = selectedRecord?.activity ?? null;
+  const log = latest?.log ?? null;
   const activityId = activity?.activityId ?? null;
-  const outdoorCandidate = useGarmin && isOutdoorGpsCandidate(latestGarmin);
+  const outdoorCandidate = isOutdoorGpsCandidate(selectedRecord);
 
   useEffect(() => {
     if (!activityId || !outdoorCandidate) {
@@ -438,9 +526,7 @@ export default function LatestSessionHero() {
 
   const title = activity?.title ?? log?.workoutTitle ?? "Latest session";
   const type = activityLabel(
-    activity?.activityType ??
-      log?.workoutSessionType ??
-      log?.workoutCategory,
+    activity?.activityType ?? log?.workoutSessionType ?? log?.workoutCategory,
   );
   const completedAt =
     activity?.localStartTime ?? activity?.startTime ?? log?.completedAt;
@@ -528,7 +614,7 @@ export default function LatestSessionHero() {
           <div className="tv-coach-note mt-7">
             <p className="tv-label text-[var(--accent)]">Coach read</p>
             <p className="mt-2 max-w-xl text-sm font-semibold leading-[1.7] text-[#d9ded5]">
-              {coachRead(latestGarmin, log)}
+              {coachRead(selectedRecord, log)}
             </p>
           </div>
 
@@ -544,7 +630,7 @@ export default function LatestSessionHero() {
         </div>
 
         <div className="min-w-0 border-t border-[var(--border)] p-4 sm:p-5 lg:border-l lg:border-t-0 lg:p-6 xl:p-7">
-          {activity && latestGarmin ? (
+          {activity && selectedRecord ? (
             readyRoute ? (
               <div className="grid h-full content-start gap-3">
                 <div className="flex flex-wrap items-end justify-between gap-3 px-1">
@@ -569,7 +655,7 @@ export default function LatestSessionHero() {
               </div>
             ) : (
               <PerformancePanel
-                record={latestGarmin}
+                record={selectedRecord}
                 reviewHref={reviewHref}
                 reason={outdoorCandidate ? "no-route" : "indoor"}
               />
@@ -579,7 +665,7 @@ export default function LatestSessionHero() {
               <div>
                 <p className="tv-label text-[var(--accent)]">Session fingerprint</p>
                 <h3 className="mt-3 max-w-sm text-3xl font-[780] leading-[0.98] tracking-[-0.045em]">
-                  Work done. Context retained.
+                  Work done. Garmin reconciliation pending.
                 </h3>
               </div>
               <div className="grid gap-3">

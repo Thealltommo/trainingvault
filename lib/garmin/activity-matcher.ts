@@ -111,7 +111,8 @@ function scoreCandidate(
   const plannedDateDifference = activityDate
     ? daysApart(activityDate, session.date)
     : Number.POSITIVE_INFINITY;
-  const completionDate = datePart(session.completedAt);
+  const completionDate =
+    datePart(session.completedAt) ?? datePart(session.plannedStartTime);
   const completionDateDifference =
     activityDate && completionDate
       ? daysApart(activityDate, completionDate)

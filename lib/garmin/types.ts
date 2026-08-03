@@ -106,6 +106,12 @@ export type PlannedRunningSession = {
   sessionId: string;
   title: string;
   date: string;
+  /**
+   * Athlete-confirmed completion time. This is deliberately retained as
+   * matching evidence because a session can be moved after Garmin has already
+   * scheduled the workout, or manually marked complete before the watch syncs.
+   */
+  completedAt?: string | null;
   plannedStartTime?: string | null;
   plannedDistanceMeters?: number | null;
   plannedDurationSeconds?: number | null;
@@ -115,7 +121,9 @@ export type PlannedRunningSession = {
 export type ActivityMatchReason =
   | "garmin_workout_id"
   | "same_date"
+  | "completion_date"
   | "adjacent_date"
+  | "title"
   | "start_time"
   | "distance"
   | "duration";

@@ -15,7 +15,7 @@ function isRunningActivity(activityType: string | null) {
   return normalized.includes("run") || normalized.includes("jog");
 }
 
-function datePart(timestamp: string | null) {
+function datePart(timestamp: string | null | undefined) {
   const match = timestamp?.match(/^(\d{4}-\d{2}-\d{2})/);
   return match?.[1] ?? null;
 }
@@ -108,15 +108,27 @@ function scoreCandidate(
 ): ActivityMatchCandidate | null {
   const activityDate =
     datePart(activity.localStartTime) ?? datePart(activity.startTime);
-  const differenceInDays = activityDate
+  const plannedDateDifference = activityDate
     ? daysApart(activityDate, session.date)
     : Number.POSITIVE_INFINITY;
+  const completionDate = datePart(session.completedAt);
+  const completionDateDifference =
+    activityDate && completionDate
+      ? daysApart(activityDate, completionDate)
+      : Number.POSITIVE_INFINITY;
+  const bestDateDifference = Math.min(
+    plannedDateDifference,
+    completionDateDifference,
+  );
   const workoutIdMatches =
     Boolean(activity.garminWorkoutId) &&
     Boolean(session.garminWorkoutId) &&
     activity.garminWorkoutId === session.garminWorkoutId;
 
-  if (!workoutIdMatches && differenceInDays > 1) {
+  // A manually confirmed completion date remains valid matching evidence after
+  // the athlete moves the plan around. Without it, date drift greater than one
+  // day is too weak to consider unless Garmin supplies the originating workout.
+  if (!workoutIdMatches && bestDateDifference > 1) {
     return null;
   }
 
@@ -128,19 +140,22 @@ function scoreCandidate(
     reasons.push("garmin_workout_id");
   }
 
-  if (differenceInDays === 0) {
+  if (plannedDateDifference === 0) {
     score += 30;
     reasons.push("same_date");
-  } else if (differenceInDays === 1) {
+  } else if (completionDateDifference === 0) {
+    score += 30;
+    reasons.push("completion_date");
+  } else if (bestDateDifference === 1) {
     score += 5;
     reasons.push("adjacent_date");
   }
 
-  // Garmin frequently omits the originating workout ID from completed
-  // treadmill activities. An exact title on the same day is strong,
-  // deterministic evidence and prevents a planned session from remaining
-  // needlessly unlinked after it was sent to the watch by TrainVault.
-  score += titleSimilarityScore(activity.title, session.title);
+  const titleScore = titleSimilarityScore(activity.title, session.title);
+  score += titleScore;
+  if (titleScore > 0) {
+    reasons.push("title");
+  }
 
   if (session.plannedStartTime && activity.startTime) {
     const plannedTime = Date.parse(session.plannedStartTime);

@@ -111,6 +111,21 @@ export default function LogPage() {
       workoutOverrides,
     ],
   );
+  const latestLogByWorkoutId = useMemo(() => {
+    const byWorkout = new Map<string, SessionLog>();
+
+    for (const log of [...logs].sort(
+      (first, second) =>
+        new Date(second.completedAt).getTime() -
+        new Date(first.completedAt).getTime(),
+    )) {
+      if (!byWorkout.has(log.workoutId)) {
+        byWorkout.set(log.workoutId, log);
+      }
+    }
+
+    return byWorkout;
+  }, [logs]);
   const plannedGarminSessions = useMemo(
     () =>
       calendarSessions
@@ -124,11 +139,17 @@ export default function LogPage() {
           const metrics = structured
             ? getStructuredRunningMetrics(structured)
             : null;
+          const completion = latestLogByWorkoutId.get(session.id);
 
           return {
             sessionId: session.id,
             title: session.workout.title,
             date: session.scheduledDate,
+            // When a moved workout was manually marked complete before Garmin
+            // synced, the completion timestamp becomes a safe date/time alias
+            // for deterministic reconciliation with the watch activity.
+            plannedStartTime: completion?.completedAt ?? null,
+            completedAt: completion?.completedAt ?? null,
             plannedDurationSeconds:
               metrics?.plannedDurationSeconds ??
               session.workout.durationMinutes * 60,
@@ -143,7 +164,7 @@ export default function LogPage() {
               metrics?.plannedIntervalCount ?? null,
           };
         }),
-    [calendarSessions, structuredRuns],
+    [calendarSessions, latestLogByWorkoutId, structuredRuns],
   );
 
   const workoutsById = useMemo(() => {

@@ -178,9 +178,10 @@ export default function GarminSessionActions({
   prescriptionMatchesStructuredWorkout = true,
 }: GarminSessionActionsProps) {
   const garmin = useGarminLocalState();
-  const storedRecord = garmin.workoutSync[sessionId];
-  const record =
-    storedRecord?.scheduledDate === scheduledDate ? storedRecord : undefined;
+  const record = garmin.workoutSync[sessionId];
+  const scheduleChanged = Boolean(
+    record && scheduledDate && record.scheduledDate !== scheduledDate,
+  );
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const recordUpdatedAt = record ? Date.parse(record.updatedAt) : Number.NaN;
   const staleSyncing =
@@ -219,7 +220,8 @@ export default function GarminSessionActions({
       !prescriptionMatchesStructuredWorkout &&
       currentSignature !== syncedSignature,
   );
-  const needsReplacement = signatureChanged || unverifiedPrescriptionChange;
+  const needsReplacement =
+    scheduleChanged || signatureChanged || unverifiedPrescriptionChange;
   const canPushExisting = Boolean(
     hasExistingScheduledWorkout &&
       !needsReplacement &&
@@ -251,14 +253,14 @@ export default function GarminSessionActions({
       !currentSignature ||
       syncedSignature ||
       !hasExistingScheduledWorkout ||
-      !prescriptionMatchesStructuredWorkout
+      !prescriptionMatchesStructuredWorkout ||
+      scheduleChanged
     ) {
       return;
     }
 
-    // Existing pre-signature records that still match the selected prescription
-    // are treated as the version already in Garmin. Edited/mismatched records are
-    // deliberately not adopted so the user is offered an explicit replacement.
+    // Existing pre-signature records that still match both the selected
+    // prescription and date are treated as the version already in Garmin.
     writeSyncedSignature(sessionId, currentSignature);
     const timeoutId = window.setTimeout(
       () => setSyncedSignature(currentSignature),
@@ -269,6 +271,7 @@ export default function GarminSessionActions({
     currentSignature,
     hasExistingScheduledWorkout,
     prescriptionMatchesStructuredWorkout,
+    scheduleChanged,
     sessionId,
     syncedSignature,
   ]);
@@ -347,23 +350,19 @@ export default function GarminSessionActions({
     if (
       needsReplacement &&
       !window.confirm(
-        "Replace the workout already scheduled in Garmin with the structured steps shown on this page?\n\nTrainVault will upload and schedule the new version first, then remove the old Garmin calendar entry and workout template. Your previous TrainVault prescription remains in history.",
+        scheduleChanged
+          ? `This workout is still scheduled in Garmin for ${record?.scheduledDate}. Replace it with the version scheduled for ${scheduledDate}?\n\nTrainVault will create the new calendar entry first, then remove the old Garmin schedule and workout template.`
+          : "Replace the workout already scheduled in Garmin with the structured steps shown on this page?\n\nTrainVault will upload and schedule the new version first, then remove the old Garmin calendar entry and workout template. Your previous TrainVault prescription remains in history.",
       )
     ) {
       return;
     }
 
     setOperationNotice("");
-    const retryIds =
-      record?.scheduledDate === scheduledDate
-        ? {
-            garminWorkoutId: record.garminWorkoutId,
-            workoutScheduleId: record.workoutScheduleId,
-          }
-        : {
-            garminWorkoutId: null,
-            workoutScheduleId: null,
-          };
+    const retryIds = {
+      garminWorkoutId: record?.garminWorkoutId ?? null,
+      workoutScheduleId: record?.workoutScheduleId ?? null,
+    };
     const syncingRecord: GarminWorkoutSyncRecord = {
       sessionId,
       state: "syncing",
@@ -429,7 +428,9 @@ export default function GarminSessionActions({
   }
 
   const buttonLabel = needsReplacement
-    ? "Update Garmin"
+    ? scheduleChanged
+      ? "Reschedule Garmin"
+      : "Update Garmin"
     : state === "error"
       ? "Retry Garmin"
       : state === "scheduled" && pushToDevice
@@ -489,6 +490,22 @@ export default function GarminSessionActions({
           and scheduled for {scheduledDate}.
         </p>
       )}
+
+      {scheduleChanged ? (
+        <div
+          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
+          role="alert"
+        >
+          <p>
+            TrainVault moved this session to {scheduledDate}, but Garmin still
+            has the previous calendar entry for {record?.scheduledDate}.
+          </p>
+          <p className="mt-2 text-xs text-amber-100/80">
+            Reschedule Garmin will replace the old calendar entry rather than
+            creating a duplicate workout.
+          </p>
+        </div>
+      ) : null}
 
       {hasPrescription && !prescriptionMatchesStructuredWorkout ? (
         <div

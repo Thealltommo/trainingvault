@@ -13,7 +13,6 @@ import {
   Route,
   Sparkles,
   Target,
-  Timer,
   TrendingUp,
   Zap,
 } from "lucide-react";
@@ -27,9 +26,7 @@ import {
   getGarminCompletedSessionIds,
   useGarminLocalState,
 } from "@/lib/garmin-storage";
-import {
-  useStructuredRunningWorkouts,
-} from "@/lib/structured-running-storage";
+import { useStructuredRunningWorkouts } from "@/lib/structured-running-storage";
 import {
   useActiveProgrammeOptional,
   useSessionLogs,
@@ -161,8 +158,7 @@ function provisionalRaceEstimate(
     ) {
       return [];
     }
-    const predicted =
-      duration * (targetMeters / activity.distanceMeters) ** 1.06;
+    const predicted = duration * (targetMeters / activity.distanceMeters) ** 1.06;
     return [predicted];
   });
   if (candidates.length === 0) return null;

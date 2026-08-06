@@ -226,18 +226,7 @@ export function buildRacePredictions(
   });
 }
 
-function phaseForSplit(
-  split: AnalysisSplit,
-  index: number,
-  workout: StructuredRunningWorkout | null,
-) {
-  const expanded = expandStructuredSteps(workout);
-  if (expanded.length === 0 || expanded.length !== (workout ? expanded.length : 0)) {
-    // Continue into Garmin split-name inference below.
-  }
-  const matched = expanded[index]?.step;
-  if (matched) return matched.phase;
-
+function phaseForSplit(split: AnalysisSplit) {
   const signal = (split.splitType ?? "").toLowerCase();
   if (signal.includes("warm")) return "warmup" as const;
   if (signal.includes("recover") || signal.includes("rest")) {
@@ -256,7 +245,7 @@ export function buildIntervalIntelligence(
   const expanded = expandStructuredSteps(workout);
   const aligned = expanded.length === splits.length ? expanded : [];
   const work = splits.flatMap((split, index) => {
-    const phase = aligned[index]?.step.phase ?? phaseForSplit(split, index, workout);
+    const phase = aligned[index]?.step.phase ?? phaseForSplit(split);
     if (phase !== "work" || !finite(split.averagePaceSecondsPerKm)) return [];
     const target = targetPace(aligned[index]?.step);
     const onTarget =
@@ -275,7 +264,7 @@ export function buildIntervalIntelligence(
     ];
   });
   const recoveries = splits.flatMap((split, index) => {
-    const phase = aligned[index]?.step.phase ?? phaseForSplit(split, index, workout);
+    const phase = aligned[index]?.step.phase ?? phaseForSplit(split);
     return phase === "recovery" && finite(split.averageHeartRateBpm)
       ? [split.averageHeartRateBpm]
       : [];
@@ -293,6 +282,9 @@ export function buildIntervalIntelligence(
   const paceFadeSecondsPerKm = work.at(-1)!.pace - work[0].pace;
   const targetCount = work.filter((item) => item.target != null).length;
   const onTargetCount = work.filter((item) => item.onTarget === true).length;
+  const peakHeartRates = work
+    .map((item) => item.maxHeartRate)
+    .filter((value): value is number => finite(value));
 
   let verdict = "Work repetitions recorded.";
   if (finite(paceVariationPercent)) {
@@ -318,13 +310,8 @@ export function buildIntervalIntelligence(
     paceFadeSecondsPerKm,
     firstWorkHeartRateBpm: work[0].averageHeartRate,
     finalWorkHeartRateBpm: work.at(-1)!.averageHeartRate,
-    peakHeartRateBpm: average(work.map((item) => item.maxHeartRate)) == null
-      ? null
-      : Math.max(
-          ...work
-            .map((item) => item.maxHeartRate)
-            .filter((value): value is number => finite(value)),
-        ),
+    peakHeartRateBpm:
+      peakHeartRates.length > 0 ? Math.max(...peakHeartRates) : null,
     averageRecoveryHeartRateBpm: average(recoveries),
     verdict,
   };
@@ -363,7 +350,10 @@ export function findComparableRuns(
       const sameTitle =
         currentTitle.length >= 6 &&
         normalizedTitle(activity.title).includes(currentTitle);
-      if (!sameTitle && (ratio < 0.84 || ratio > 1.16)) return [];
+      const normalDistanceMatch = ratio >= 0.84 && ratio <= 1.16;
+      const titleSupportedDistanceMatch =
+        sameTitle && ratio >= 0.75 && ratio <= 1.25;
+      if (!normalDistanceMatch && !titleSupportedDistanceMatch) return [];
 
       return [
         {
@@ -389,9 +379,6 @@ export function estimateStructuredDistance(
   if (!workout) return null;
   let total = 0;
   let known = false;
-
-  const addStep = (step: (typeof workout.steps)[number] extends infer _ ? never : never) => step;
-  void addStep;
 
   const distanceForStep = (
     step: Extract<(typeof workout.steps)[number], { kind: "step" }>,

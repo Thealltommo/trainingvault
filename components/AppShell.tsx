@@ -8,6 +8,7 @@ import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
 import LatestSessionHero from "./LatestSessionHero";
 import PlanManager from "./PlanManager";
+import V4ProgrammeOverview from "./V4ProgrammeOverview";
 
 type AppShellProps = {
   children: ReactNode;
@@ -74,7 +75,7 @@ export default function AppShell({ children }: AppShellProps) {
               <p className="text-[0.58rem] font-extrabold uppercase tracking-[0.15em] text-[var(--accent)]">
                 Evidence-led
               </p>
-              <span className="rounded-full border border-white/[0.08] px-2 py-1 text-[0.52rem] font-bold uppercase tracking-[0.1em] text-[var(--quiet)]">V3</span>
+              <span className="rounded-full border border-white/[0.08] px-2 py-1 text-[0.52rem] font-bold uppercase tracking-[0.1em] text-[var(--quiet)]">V4</span>
             </div>
             <p className="mt-2 text-[0.63rem] font-semibold leading-relaxed text-[var(--quiet)]">
               Plan, recovery, Garmin and coach decisions stay in one private training record.
@@ -123,6 +124,12 @@ export default function AppShell({ children }: AppShellProps) {
 
       <main className="tv-shell-content min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-[15.5rem] md:pb-10">
         <div className="relative mx-auto w-full max-w-[1420px] px-3 py-4 sm:px-5 md:px-7 md:py-7 xl:px-9 xl:py-9">
+          {showPlanStudioPrompt ? (
+            <div className="mb-7">
+              <V4ProgrammeOverview />
+            </div>
+          ) : null}
+
           {showPlanStudioPrompt ? <PlanManager /> : null}
 
           {showPlanStudioPrompt ? (

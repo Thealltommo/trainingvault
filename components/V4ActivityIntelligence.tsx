@@ -13,11 +13,8 @@ import {
   Gauge,
   HeartPulse,
   Medal,
-  Route,
   Sparkles,
   Target,
-  Timer,
-  TrendingUp,
   Trophy,
   Zap,
 } from "lucide-react";

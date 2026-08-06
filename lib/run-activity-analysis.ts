@@ -165,7 +165,9 @@ export function interpolateClock(
 ) {
   if (samples.length === 0) return null;
   const firstDistance = samples[0].distanceMeters ?? 0;
+  const finalDistance = samples.at(-1)?.distanceMeters ?? firstDistance;
   if (distanceMeters <= firstDistance) return sampleClock(samples[0]);
+  if (distanceMeters > finalDistance + 0.5) return null;
 
   for (let index = 1; index < samples.length; index += 1) {
     const previous = samples[index - 1];
@@ -193,7 +195,7 @@ export function interpolateClock(
     );
   }
 
-  return sampleClock(samples[samples.length - 1]);
+  return null;
 }
 
 function interpolateElevation(samples: AnalysisSample[], distanceMeters: number) {

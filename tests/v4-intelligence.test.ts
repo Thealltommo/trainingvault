@@ -149,15 +149,17 @@ describe("V4 athlete intelligence", () => {
     expect(result?.verdict).toContain("Excellent repeatability");
   });
 
-  it("builds honest provisional race ranges from a valid continuous effort", () => {
+  it("builds honest provisional race ranges from the strongest continuous evidence", () => {
     const efforts = buildBestEfforts(samples(10_000, 300));
     const predictions = buildRacePredictions(efforts);
     const fiveK = predictions.find((prediction) => prediction.distance === "5K");
     const tenK = predictions.find((prediction) => prediction.distance === "10K");
 
-    expect(fiveK?.midpointSeconds).toBeCloseTo(1_500, 0);
+    expect(fiveK?.midpointSeconds).toBeGreaterThan(1_400);
+    expect(fiveK?.midpointSeconds).toBeLessThan(1_500);
     expect(tenK?.midpointSeconds).toBeCloseTo(3_000, 0);
     expect(fiveK?.confidence).toBe("medium");
+    expect(fiveK?.source).toBe("best 10 km");
   });
 
   it("classifies plan intent and estimates only structurally supported distance", () => {

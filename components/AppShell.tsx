@@ -36,7 +36,7 @@ export default function AppShell({ children }: AppShellProps) {
           <span className="min-w-0">
             <span className="block text-[1.05rem] font-[850] uppercase leading-none tracking-[-0.035em]">TrainVault</span>
             <span className="mt-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.13em] text-[var(--muted)]">
-              Private athlete OS
+              Private athlete OS · V4
             </span>
           </span>
         </Link>
@@ -91,7 +91,7 @@ export default function AppShell({ children }: AppShellProps) {
           </span>
           <span>
             <span className="block text-sm font-[850] uppercase leading-none tracking-[-0.03em]">TrainVault</span>
-            <span className="mt-1 block text-[0.55rem] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">Athlete OS</span>
+            <span className="mt-1 block text-[0.55rem] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">Athlete OS · V4</span>
           </span>
         </Link>
         <div className="flex items-center gap-2">

@@ -41,6 +41,7 @@ const stateLabels: Record<GarminSyncState, string> = {
   sent_to_device: "Sent to device",
   error: "Error",
 };
+
 const STALE_SYNC_AFTER_MS = 2 * 60 * 1_000;
 const STRUCTURED_SIGNATURES_KEY = "trainvault_garmin_structured_signatures_v1";
 
@@ -49,18 +50,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function safeError(value: unknown, fallback: string) {
-  if (!isObject(value) || typeof value.error !== "string") {
-    return fallback;
-  }
-
+  if (!isObject(value) || typeof value.error !== "string") return fallback;
   return value.error.slice(0, 300);
 }
 
 function safeWarning(value: unknown) {
-  if (!isObject(value) || typeof value.replacementWarning !== "string") {
-    return "";
-  }
-
+  if (!isObject(value) || typeof value.replacementWarning !== "string") return "";
   return value.replacementWarning.slice(0, 400);
 }
 
@@ -68,17 +63,10 @@ function responseRecord(
   value: unknown,
   fallback: GarminWorkoutSyncRecord,
 ): GarminWorkoutSyncRecord | null {
-  if (!isObject(value)) {
-    return null;
-  }
+  if (!isObject(value)) return null;
 
   const state = value.state;
-
-  if (
-    state !== "scheduled" &&
-    state !== "sent_to_device" &&
-    state !== "error"
-  ) {
+  if (state !== "scheduled" && state !== "sent_to_device" && state !== "error") {
     return null;
   }
 
@@ -115,11 +103,9 @@ function stateClasses(state: GarminSyncState) {
   if (state === "scheduled" || state === "sent_to_device") {
     return "border-[var(--accent)] bg-[rgba(215,255,47,0.1)] text-[var(--accent)]";
   }
-
   if (state === "error") {
     return "border-red-400/45 bg-red-400/10 text-red-300";
   }
-
   return "border-[var(--border)] bg-black text-[var(--muted)]";
 }
 
@@ -132,18 +118,15 @@ function structuredWorkoutSignature(workout: StructuredRunningWorkout) {
     steps: workout.steps,
   });
   let hash = 2166136261;
-
   for (let index = 0; index < raw.length; index += 1) {
     hash ^= raw.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-
   return `${raw.length}:${(hash >>> 0).toString(16)}`;
 }
 
 function readSyncedSignature(sessionId: string) {
   if (typeof window === "undefined") return null;
-
   try {
     const raw = window.localStorage.getItem(STRUCTURED_SIGNATURES_KEY);
     if (!raw) return null;
@@ -157,7 +140,6 @@ function readSyncedSignature(sessionId: string) {
 
 function writeSyncedSignature(sessionId: string, signature: string) {
   if (typeof window === "undefined") return;
-
   try {
     const raw = window.localStorage.getItem(STRUCTURED_SIGNATURES_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : {};
@@ -167,7 +149,7 @@ function writeSyncedSignature(sessionId: string, signature: string) {
       JSON.stringify({ ...signatures, [sessionId]: signature }),
     );
   } catch {
-    // Signature tracking improves replacement UX but is not required for Garmin delivery.
+    // Signature tracking improves replacement UX but is not required for delivery.
   }
 }
 
@@ -191,6 +173,7 @@ export default function GarminSessionActions({
   const state: GarminSyncState = staleSyncing
     ? "error"
     : record?.state ?? "not_sent";
+
   const [pushToDevice, setPushToDevice] = useState(false);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [devices, setDevices] = useState<GarminDevice[]>([]);
@@ -198,6 +181,7 @@ export default function GarminSessionActions({
   const [deviceError, setDeviceError] = useState("");
   const [operationNotice, setOperationNotice] = useState("");
   const [syncedSignature, setSyncedSignature] = useState<string | null>(null);
+
   const hasPrescription =
     Boolean(structuredWorkout) && (structuredWorkout?.steps.length ?? 0) > 0;
   const currentSignature = useMemo(
@@ -220,6 +204,11 @@ export default function GarminSessionActions({
       !prescriptionMatchesStructuredWorkout &&
       currentSignature !== syncedSignature,
   );
+  const requiresInitialConfirmation = Boolean(
+    !hasExistingScheduledWorkout &&
+      hasPrescription &&
+      !prescriptionMatchesStructuredWorkout,
+  );
   const needsReplacement =
     scheduleChanged || signatureChanged || unverifiedPrescriptionChange;
   const canPushExisting = Boolean(
@@ -229,9 +218,7 @@ export default function GarminSessionActions({
       state === "scheduled",
   );
   const canInitialSend = Boolean(
-    !hasExistingScheduledWorkout &&
-      prescriptionMatchesStructuredWorkout &&
-      state !== "syncing",
+    !hasExistingScheduledWorkout && state !== "syncing",
   );
   const canRetry = state === "error" && hasPrescription;
   const canSend =
@@ -259,8 +246,6 @@ export default function GarminSessionActions({
       return;
     }
 
-    // Existing pre-signature records that still match both the selected
-    // prescription and date are treated as the version already in Garmin.
     writeSyncedSignature(sessionId, currentSignature);
     const timeoutId = window.setTimeout(
       () => setSyncedSignature(currentSignature),
@@ -277,13 +262,7 @@ export default function GarminSessionActions({
   ]);
 
   useEffect(() => {
-    if (
-      record?.state !== "syncing" ||
-      !Number.isFinite(recordUpdatedAt)
-    ) {
-      return;
-    }
-
+    if (record?.state !== "syncing" || !Number.isFinite(recordUpdatedAt)) return;
     const remaining = Math.max(
       0,
       recordUpdatedAt + STALE_SYNC_AFTER_MS - Date.now(),
@@ -292,24 +271,17 @@ export default function GarminSessionActions({
       () => setCurrentTime(Date.now()),
       remaining + 50,
     );
-
     return () => window.clearTimeout(timeoutId);
   }, [record?.state, record?.updatedAt, recordUpdatedAt]);
 
   async function loadDevices() {
-    if (devicesLoading || devices.length > 0) {
-      return;
-    }
-
+    if (devicesLoading || devices.length > 0) return;
     setDevicesLoading(true);
     setDeviceError("");
 
     try {
-      const response = await fetch("/api/garmin/devices", {
-        cache: "no-store",
-      });
+      const response = await fetch("/api/garmin/devices", { cache: "no-store" });
       const value = (await response.json()) as unknown;
-
       if (!response.ok || !isObject(value) || !Array.isArray(value.devices)) {
         throw new Error(safeError(value, "Garmin devices could not be loaded."));
       }
@@ -317,20 +289,14 @@ export default function GarminSessionActions({
       const parsedDevices = value.devices.filter(
         (device): device is GarminDevice =>
           isObject(device) &&
-          (device.userDeviceId === null ||
-            typeof device.userDeviceId === "string") &&
-          (device.displayName === null ||
-            typeof device.displayName === "string"),
+          (device.userDeviceId === null || typeof device.userDeviceId === "string") &&
+          (device.displayName === null || typeof device.displayName === "string"),
       );
       setDevices(parsedDevices);
-
       const primary = parsedDevices.find(
         (device) => device.primary && device.userDeviceId,
       );
-
-      if (primary?.userDeviceId) {
-        setSelectedDeviceId(primary.userDeviceId);
-      }
+      if (primary?.userDeviceId) setSelectedDeviceId(primary.userDeviceId);
     } catch (error) {
       setDeviceError(
         error instanceof Error
@@ -343,7 +309,14 @@ export default function GarminSessionActions({
   }
 
   async function handleSend() {
-    if (!structuredWorkout || !scheduledDate || !canSend) {
+    if (!structuredWorkout || !scheduledDate || !canSend) return;
+
+    if (
+      requiresInitialConfirmation &&
+      !window.confirm(
+        "TrainVault cannot prove that the current prescription and stored Garmin work order came from the same edit.\n\nThe structured steps visible on this page are exactly what will be sent to Garmin. Send those reviewed steps now?",
+      )
+    ) {
       return;
     }
 
@@ -390,15 +363,11 @@ export default function GarminSessionActions({
       });
       const value = (await response.json()) as unknown;
       const nextRecord = responseRecord(value, syncingRecord);
-
       if (!nextRecord) {
-        throw new Error(
-          safeError(value, "Garmin returned an unexpected response."),
-        );
+        throw new Error(safeError(value, "Garmin returned an unexpected response."));
       }
 
       saveGarminWorkoutSync(nextRecord);
-
       if (nextRecord.state === "scheduled" || nextRecord.state === "sent_to_device") {
         if (currentSignature) {
           writeSyncedSignature(sessionId, currentSignature);
@@ -448,14 +417,10 @@ export default function GarminSessionActions({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="tv-label text-[var(--accent)]">Garmin</p>
-          <h2 className="mt-1 text-2xl font-black uppercase">
-            Structured run delivery
-          </h2>
+          <h2 className="mt-1 text-2xl font-black uppercase">Structured run delivery</h2>
         </div>
         <span
-          className={`inline-flex min-h-9 items-center gap-2 rounded-sm border px-3 text-xs font-black uppercase ${stateClasses(
-            state,
-          )}`}
+          className={`inline-flex min-h-9 items-center gap-2 rounded-sm border px-3 text-xs font-black uppercase ${stateClasses(state)}`}
           aria-live="polite"
         >
           {state === "syncing" ? (
@@ -492,32 +457,30 @@ export default function GarminSessionActions({
       )}
 
       {scheduleChanged ? (
-        <div
-          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
-          role="alert"
-        >
+        <div className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100" role="alert">
           <p>
             TrainVault moved this session to {scheduledDate}, but Garmin still
             has the previous calendar entry for {record?.scheduledDate}.
           </p>
           <p className="mt-2 text-xs text-amber-100/80">
-            Reschedule Garmin will replace the old calendar entry rather than
-            creating a duplicate workout.
+            Reschedule Garmin will replace the old calendar entry rather than creating a duplicate workout.
           </p>
         </div>
       ) : null}
 
       {hasPrescription && !prescriptionMatchesStructuredWorkout ? (
-        <div
-          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
-          role="alert"
-        >
+        <div className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100" role="alert">
           <p>
-            TrainVault cannot prove that the selected prescription and the
-            stored structured Garmin steps are identical. Review the Garmin-ready
-            steps shown on this page before sending them.
+            TrainVault cannot prove that the selected prescription and the stored
+            structured Garmin steps are identical. Review the Garmin-ready steps
+            shown immediately above before sending them.
           </p>
-          {needsReplacement ? (
+          {!hasExistingScheduledWorkout ? (
+            <p className="mt-2 text-xs text-amber-100/80">
+              This no longer blocks a first send. TrainVault will ask you to confirm
+              the displayed work order before Garmin receives it.
+            </p>
+          ) : needsReplacement ? (
             <p className="mt-2 text-xs text-amber-100/80">
               Garmin already has an older scheduled version. Update Garmin will
               replace that calendar entry instead of silently creating another one.
@@ -544,10 +507,7 @@ export default function GarminSessionActions({
           onChange={(event) => {
             const checked = event.target.checked;
             setPushToDevice(checked);
-
-            if (checked) {
-              void loadDevices();
-            }
+            if (checked) void loadDevices();
           }}
           className="h-4 w-4 accent-[var(--accent)]"
         />
@@ -565,19 +525,12 @@ export default function GarminSessionActions({
               disabled={devicesLoading}
             >
               <option value="">
-                {devicesLoading
-                  ? "Loading devices…"
-                  : "Garmin last-used device"}
+                {devicesLoading ? "Loading devices…" : "Garmin last-used device"}
               </option>
               {devices.map((device) =>
                 device.userDeviceId ? (
-                  <option
-                    key={device.userDeviceId}
-                    value={device.userDeviceId}
-                  >
-                    {device.displayName ||
-                      device.model ||
-                      `Device ${device.userDeviceId}`}
+                  <option key={device.userDeviceId} value={device.userDeviceId}>
+                    {device.displayName || device.model || `Device ${device.userDeviceId}`}
                     {device.primary ? " · primary" : ""}
                   </option>
                 ) : null,
@@ -593,10 +546,7 @@ export default function GarminSessionActions({
       ) : null}
 
       {record?.error ? (
-        <p
-          className="mt-3 rounded-md border border-red-400/35 bg-red-400/10 p-3 text-sm font-bold text-red-200"
-          role="alert"
-        >
+        <p className="mt-3 rounded-md border border-red-400/35 bg-red-400/10 p-3 text-sm font-bold text-red-200" role="alert">
           {record.error}
           {record.garminWorkoutId ? (
             <span className="mt-1 block text-xs text-red-100/70">
@@ -613,22 +563,16 @@ export default function GarminSessionActions({
       ) : null}
 
       {staleSyncing ? (
-        <p
-          className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100"
-          role="alert"
-        >
-          The previous Garmin request was interrupted before TrainVault
-          received a final result. Retry is available; any captured Garmin IDs
-          will be reused.
+        <p className="mt-3 rounded-md border border-amber-300/45 bg-amber-300/10 p-3 text-sm font-bold text-amber-100" role="alert">
+          The previous Garmin request was interrupted before TrainVault received a
+          final result. Retry is available; any captured Garmin IDs will be reused.
         </p>
       ) : null}
 
       {record?.garminWorkoutId ? (
         <p className="mt-3 text-xs font-bold text-[var(--muted)]">
           Garmin workout {record.garminWorkoutId}
-          {record.workoutScheduleId
-            ? ` · schedule ${record.workoutScheduleId}`
-            : ""}
+          {record.workoutScheduleId ? ` · schedule ${record.workoutScheduleId}` : ""}
         </p>
       ) : null}
 

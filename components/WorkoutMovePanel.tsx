@@ -9,6 +9,7 @@ import {
   saveWorkoutOverride,
   useWorkoutOverrides,
 } from "@/lib/storage";
+import { updateStructuredRunningWorkoutDate } from "@/lib/structured-running-storage";
 import type { Workout, WorkoutOverride } from "@/lib/types";
 
 type WorkoutMovePanelProps = {
@@ -31,15 +32,10 @@ function localDateKey(offsetDays = 0) {
 }
 
 function formatSessionDate(value: string | undefined) {
-  if (!value) {
-    return "No date";
-  }
+  if (!value) return "No date";
 
   const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat("en-GB", {
     weekday: "short",
@@ -53,6 +49,28 @@ function hasOverridePayload(override: WorkoutOverride) {
     const overrideKey = key as keyof WorkoutOverride;
     return !structuralOverrideKeys.has(overrideKey) && override[overrideKey] !== undefined;
   });
+}
+
+function clearMovedDate(sourceWorkout: Workout) {
+  const current = getWorkoutOverride(sourceWorkout.id);
+
+  if (current) {
+    const next = {
+      ...current,
+      updatedAt: new Date().toISOString(),
+    };
+    delete next.date;
+
+    if (hasOverridePayload(next)) {
+      saveWorkoutOverride(next);
+    } else {
+      deleteWorkoutOverride(sourceWorkout.id);
+    }
+  }
+
+  if (sourceWorkout.date) {
+    updateStructuredRunningWorkoutDate(sourceWorkout.id, sourceWorkout.date);
+  }
 }
 
 function saveMovedDate(sourceWorkout: Workout, date: string) {
@@ -69,26 +87,11 @@ function saveMovedDate(sourceWorkout: Workout, date: string) {
     date,
     updatedAt: new Date().toISOString(),
   });
-}
 
-function clearMovedDate(sourceWorkout: Workout) {
-  const current = getWorkoutOverride(sourceWorkout.id);
-
-  if (!current) {
-    return;
-  }
-
-  const next = {
-    ...current,
-    updatedAt: new Date().toISOString(),
-  };
-  delete next.date;
-
-  if (hasOverridePayload(next)) {
-    saveWorkoutOverride(next);
-  } else {
-    deleteWorkoutOverride(sourceWorkout.id);
-  }
+  // A calendar move changes when Garmin should schedule the work, not the work
+  // itself. Keep the stored structured work order on the same effective date so
+  // delivery signatures and the visible session stay in one lifecycle.
+  updateStructuredRunningWorkoutDate(sourceWorkout.id, date);
 }
 
 export default function WorkoutMovePanel({
@@ -108,10 +111,7 @@ export default function WorkoutMovePanel({
   const moved = (effectiveWorkout.date ?? "") !== (originalWorkout.date ?? "");
 
   function handleSavePickedDate() {
-    if (!pickedDate) {
-      return;
-    }
-
+    if (!pickedDate) return;
     saveMovedDate(originalWorkout, pickedDate);
     setIsOpen(false);
   }
@@ -125,7 +125,11 @@ export default function WorkoutMovePanel({
 
   return (
     <div className="min-w-0 basis-full sm:basis-auto">
-      <button type="button" onClick={() => setIsOpen((current) => !current)} className={triggerClassName}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((current) => !current)}
+        className={triggerClassName}
+      >
         <CalendarClock className="h-4 w-4" aria-hidden="true" />
         Move
       </button>

@@ -6,9 +6,10 @@ import "./polish.css";
 import "./editorial.css";
 
 export const metadata: Metadata = {
-  title: "TrainVault",
-  description: "Private athlete intelligence for planning, recovery, Garmin and adaptive coaching.",
+  title: "TrainVault · V4 Athlete OS",
+  description: "Private athlete intelligence for planning, recovery, Garmin, activity analysis and adaptive coaching.",
   applicationName: "TrainVault",
+  manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -17,13 +18,16 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#d7ff1f",
+  themeColor: "#060806",
   colorScheme: "dark",
 };
 

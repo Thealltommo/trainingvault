@@ -2,15 +2,47 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "TrainVault",
     short_name: "TrainVault",
-    description: "Private athlete operating system for planning, recovery, Garmin and adaptive coaching.",
+    description: "TrainVault V4 — private athlete operating system for planning, recovery, Garmin, activity intelligence and adaptive coaching.",
     start_url: "/",
+    scope: "/",
     display: "standalone",
-    background_color: "#050505",
-    theme_color: "#d7ff1f",
+    background_color: "#060806",
+    theme_color: "#060806",
     orientation: "portrait-primary",
     categories: ["fitness", "health", "sports"],
+    shortcuts: [
+      {
+        name: "Today",
+        short_name: "Today",
+        description: "Open today's training decision.",
+        url: "/",
+        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+      },
+      {
+        name: "Plan",
+        short_name: "Plan",
+        description: "Open the current training programme.",
+        url: "/plan",
+        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+      },
+      {
+        name: "Coach",
+        short_name: "Coach",
+        description: "Ask TrainVault Coach about training or plan changes.",
+        url: "/coach",
+        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+      },
+      {
+        name: "Training Log",
+        short_name: "Log",
+        description: "Review completed training and Garmin activities.",
+        url: "/log",
+        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+      },
+    ],
     icons: [
       {
         src: "/icon.svg",

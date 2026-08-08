@@ -1,7 +1,7 @@
 "use client";
 
-import { Footprints, Repeat2 } from "lucide-react";
-import { describeRunningStep } from "@/lib/structured-running";
+import { Footprints, Gauge, Repeat2 } from "lucide-react";
+import { describeRunningStep, formatPace } from "@/lib/structured-running";
 import { useStructuredRunningWorkout } from "@/lib/structured-running-storage";
 
 export default function StructuredRunningPrescription({
@@ -12,6 +12,14 @@ export default function StructuredRunningPrescription({
   const workout = useStructuredRunningWorkout(sessionId);
 
   if (!workout) return null;
+
+  const workPaceTarget = workout.steps
+    .flatMap((element) => (element.kind === "repeat" ? element.steps : [element]))
+    .find((step) => step.phase === "work" && step.target.type === "pace");
+  const paceLabel =
+    workPaceTarget?.target.type === "pace"
+      ? `${formatPace(workPaceTarget.target.fastestSecondsPerKm)}–${formatPace(workPaceTarget.target.slowestSecondsPerKm)}`
+      : null;
 
   return (
     <section className="tv-card border-[rgba(215,255,47,0.34)] p-4 sm:p-5">
@@ -29,6 +37,21 @@ export default function StructuredRunningPrescription({
           Explicit steps
         </span>
       </div>
+
+      {paceLabel ? (
+        <div className="mt-4 rounded-xl border border-[rgba(215,255,47,0.38)] bg-[rgba(215,255,47,0.07)] p-4">
+          <div className="flex items-center gap-2 text-[var(--accent)]">
+            <Gauge className="h-4 w-4" aria-hidden="true" />
+            <span className="tv-label text-[var(--accent)]">Work pace target</span>
+          </div>
+          <p className="mt-2 text-3xl font-black tracking-[-0.035em] text-[var(--text)]">
+            {paceLabel}
+          </p>
+          <p className="mt-2 text-xs font-bold leading-relaxed text-[var(--muted)]">
+            This exact band is sent to Garmin as the workout-step pace target and is reused when TrainVault scores the completed reps.
+          </p>
+        </div>
+      ) : null}
 
       <ol className="mt-4 grid gap-2">
         {workout.steps.map((element, index) =>
@@ -70,4 +93,3 @@ export default function StructuredRunningPrescription({
     </section>
   );
 }
-

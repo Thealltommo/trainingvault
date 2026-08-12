@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { deleteWorkoutOverride, getWorkoutOverride, saveWorkoutOverride } from "@/lib/storage";
 import type { Workout, WorkoutBlock, WorkoutBlockType } from "@/lib/types";
@@ -64,6 +64,7 @@ function toWorkoutBlock(block: EditableBlock): WorkoutBlock {
 }
 
 export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: WorkoutEditPanelProps) {
+  const panelRef = useRef<HTMLElement>(null);
   const [title, setTitle] = useState(workout.title);
   const [durationMinutes, setDurationMinutes] = useState(String(workout.durationMinutes));
   const [minimumMinutes, setMinimumMinutes] = useState(workout.minimumMinutes ? String(workout.minimumMinutes) : "");
@@ -74,6 +75,17 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
   const [focusText, setFocusText] = useState(workout.focus.join(", "));
   const [blocks, setBlocks] = useState<EditableBlock[]>(workout.blocks.map(toEditableBlock));
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   function updateBlock(index: number, update: Partial<EditableBlock>) {
     setBlocks((current) =>
@@ -136,7 +148,11 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
   }
 
   return (
-    <section className="tv-card border-[rgba(215,255,47,0.35)] p-4 sm:p-5">
+    <section
+      ref={panelRef}
+      id="session-edit-panel"
+      className="tv-card scroll-mt-24 border-[rgba(215,255,47,0.35)] p-4 sm:p-5"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="tv-label text-[var(--accent)]">Edit Session</p>

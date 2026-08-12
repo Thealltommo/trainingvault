@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { deleteWorkoutOverride, getWorkoutOverride, saveWorkoutOverride } from "@/lib/storage";
+import { getStructuredRunningWorkout, saveStructuredRunningWorkout } from "@/lib/structured-running-storage";
+import type {
+  RunningStepTarget,
+  StructuredRunningElement,
+  StructuredRunningWorkout,
+} from "@/lib/garmin/types";
 import type { Workout, WorkoutBlock, WorkoutBlockType } from "@/lib/types";
 
 type WorkoutEditPanelProps = {
@@ -18,6 +24,8 @@ type EditableBlock = {
   durationMinutes: string;
   itemsText: string;
 };
+
+type RunTargetMode = "auto" | "open" | "pace" | "heart_rate";
 
 const blockTypes: WorkoutBlockType[] = [
   "warmup",
@@ -39,6 +47,21 @@ function splitCommaList(value: string) {
 function parsePositiveNumber(value: string) {
   const parsed = Number(value);
   return value.trim() && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parsePace(value: string) {
+  const match = value.trim().match(/^(\d{1,2}):([0-5]\d)$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function formatPace(secondsPerKm: number) {
+  const rounded = Math.max(1, Math.round(secondsPerKm));
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
+}
+
+function isTerrainRunSignal(value: string) {
+  return /\b(fell|trail|mountain|hill|hilly|off[- ]?road)\b/i.test(value);
 }
 
 function toEditableBlock(block: WorkoutBlock, index: number): EditableBlock {
@@ -63,8 +86,76 @@ function toWorkoutBlock(block: EditableBlock): WorkoutBlock {
   };
 }
 
+function findFirstWorkTarget(workout: StructuredRunningWorkout | null): RunningStepTarget | null {
+  if (!workout) return null;
+
+  for (const element of workout.steps) {
+    if (element.kind === "repeat") {
+      const match = element.steps.find((step) => step.phase === "work");
+      if (match) return match.target;
+    } else if (element.phase === "work") {
+      return element.target;
+    }
+  }
+
+  return null;
+}
+
+function rewriteWorkTargets(
+  workout: StructuredRunningWorkout,
+  target: RunningStepTarget,
+  name: string,
+) {
+  const rewriteStep = (
+    step: Extract<StructuredRunningElement, { kind: "step" }>,
+  ) => {
+    if (step.phase !== "work") return step;
+
+    const descriptionBase = (step.description ?? "Work interval")
+      .replace(/\s*[·-]\s*target\s+[^·]+$/i, "")
+      .trim();
+    const targetDescription =
+      target.type === "pace"
+        ? ` · target ${formatPace(target.fastestSecondsPerKm)}–${formatPace(target.slowestSecondsPerKm)}/km`
+        : target.type === "heart_rate"
+          ? ` · target ${target.minimumBpm}–${target.maximumBpm} bpm`
+          : "";
+
+    return {
+      ...step,
+      target,
+      description: `${descriptionBase}${targetDescription}`,
+    };
+  };
+
+  return {
+    ...workout,
+    name,
+    steps: workout.steps.map((element) =>
+      element.kind === "repeat"
+        ? { ...element, steps: element.steps.map(rewriteStep) }
+        : rewriteStep(element),
+    ),
+  };
+}
+
+function inferInitialTargetMode(
+  workout: Workout,
+  structuredWorkout: StructuredRunningWorkout | null,
+): RunTargetMode {
+  const terrainSignal = `${workout.title} ${workout.focus.join(" ")} ${workout.targetStimulus ?? ""}`;
+  if (isTerrainRunSignal(terrainSignal)) return "open";
+
+  const target = findFirstWorkTarget(structuredWorkout);
+  if (target?.type === "pace") return "pace";
+  if (target?.type === "heart_rate") return "heart_rate";
+  return "auto";
+}
+
 export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: WorkoutEditPanelProps) {
   const panelRef = useRef<HTMLElement>(null);
+  const structuredWorkout = getStructuredRunningWorkout(sourceWorkout.id);
+  const initialWorkTarget = findFirstWorkTarget(structuredWorkout);
   const [title, setTitle] = useState(workout.title);
   const [durationMinutes, setDurationMinutes] = useState(String(workout.durationMinutes));
   const [minimumMinutes, setMinimumMinutes] = useState(workout.minimumMinutes ? String(workout.minimumMinutes) : "");
@@ -74,7 +165,24 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
   const [equipmentText, setEquipmentText] = useState(workout.equipment.join(", "));
   const [focusText, setFocusText] = useState(workout.focus.join(", "));
   const [blocks, setBlocks] = useState<EditableBlock[]>(workout.blocks.map(toEditableBlock));
+  const [runTargetMode, setRunTargetMode] = useState<RunTargetMode>(() =>
+    inferInitialTargetMode(workout, structuredWorkout),
+  );
+  const [targetModeTouched, setTargetModeTouched] = useState(false);
+  const [fastestPace, setFastestPace] = useState(
+    initialWorkTarget?.type === "pace" ? formatPace(initialWorkTarget.fastestSecondsPerKm) : "",
+  );
+  const [slowestPace, setSlowestPace] = useState(
+    initialWorkTarget?.type === "pace" ? formatPace(initialWorkTarget.slowestSecondsPerKm) : "",
+  );
+  const [minimumHeartRate, setMinimumHeartRate] = useState(
+    initialWorkTarget?.type === "heart_rate" ? String(initialWorkTarget.minimumBpm) : "",
+  );
+  const [maximumHeartRate, setMaximumHeartRate] = useState(
+    initialWorkTarget?.type === "heart_rate" ? String(initialWorkTarget.maximumBpm) : "",
+  );
   const [saved, setSaved] = useState(false);
+  const isRunningSession = Boolean(structuredWorkout);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -113,14 +221,22 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
     setSaved(false);
   }
 
+  function maybeDefaultTerrainToOpen(nextTitle = title, nextFocus = focusText) {
+    if (targetModeTouched) return;
+    if (isTerrainRunSignal(`${nextTitle} ${nextFocus} ${targetStimulus}`)) {
+      setRunTargetMode("open");
+    }
+  }
+
   function handleSave() {
     const current = getWorkoutOverride(sourceWorkout.id);
     const parsedDuration = parsePositiveNumber(durationMinutes) ?? sourceWorkout.durationMinutes;
+    const nextTitle = title.trim() || sourceWorkout.title;
 
     saveWorkoutOverride({
       ...(current ?? { workoutId: sourceWorkout.id, updatedAt: "" }),
       workoutId: sourceWorkout.id,
-      title: title.trim() || sourceWorkout.title,
+      title: nextTitle,
       durationMinutes: parsedDuration,
       minimumMinutes: parsePositiveNumber(minimumMinutes),
       prescribedLoadsOrPace: prescribedLoadsOrPace.trim(),
@@ -132,6 +248,59 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
       modificationReason: current?.modificationReason ?? "Manual session edit",
       updatedAt: new Date().toISOString(),
     });
+
+    const currentStructuredWorkout = getStructuredRunningWorkout(sourceWorkout.id);
+    if (currentStructuredWorkout) {
+      let nextStructuredWorkout: StructuredRunningWorkout = {
+        ...currentStructuredWorkout,
+        name: nextTitle,
+      };
+
+      const terrainSignal = `${nextTitle} ${focusText} ${targetStimulus}`;
+      const effectiveMode =
+        runTargetMode === "auto" && isTerrainRunSignal(terrainSignal)
+          ? "open"
+          : runTargetMode;
+
+      if (effectiveMode === "open") {
+        nextStructuredWorkout = rewriteWorkTargets(
+          nextStructuredWorkout,
+          { type: "open" },
+          nextTitle,
+        );
+      } else if (effectiveMode === "pace") {
+        const first = parsePace(fastestPace);
+        const second = parsePace(slowestPace);
+        if (first != null && second != null) {
+          nextStructuredWorkout = rewriteWorkTargets(
+            nextStructuredWorkout,
+            {
+              type: "pace",
+              fastestSecondsPerKm: Math.min(first, second),
+              slowestSecondsPerKm: Math.max(first, second),
+            },
+            nextTitle,
+          );
+        }
+      } else if (effectiveMode === "heart_rate") {
+        const minimumBpm = parsePositiveNumber(minimumHeartRate);
+        const maximumBpm = parsePositiveNumber(maximumHeartRate);
+        if (minimumBpm && maximumBpm) {
+          nextStructuredWorkout = rewriteWorkTargets(
+            nextStructuredWorkout,
+            {
+              type: "heart_rate",
+              minimumBpm: Math.round(Math.min(minimumBpm, maximumBpm)),
+              maximumBpm: Math.round(Math.max(minimumBpm, maximumBpm)),
+            },
+            nextTitle,
+          );
+        }
+      }
+
+      saveStructuredRunningWorkout(nextStructuredWorkout);
+    }
+
     setSaved(true);
   }
 
@@ -174,7 +343,16 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <label className="grid gap-2 md:col-span-2">
           <span className="tv-label">Title</span>
-          <input className="tv-input" value={title} onChange={(event) => setTitle(event.target.value)} />
+          <input
+            className="tv-input"
+            value={title}
+            onChange={(event) => {
+              const next = event.target.value;
+              setTitle(next);
+              maybeDefaultTerrainToOpen(next, focusText);
+              setSaved(false);
+            }}
+          />
         </label>
 
         <label className="grid gap-2">
@@ -211,6 +389,107 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
           />
         </label>
 
+        {isRunningSession ? (
+          <div className="grid gap-3 rounded-md border border-[rgba(215,255,47,0.22)] bg-black/45 p-3 md:col-span-2">
+            <div>
+              <p className="tv-label text-[var(--accent)]">Watch target</p>
+              <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+                Fell, trail and mountain runs default to effort/open. Pick a pace or heart-rate target only when it genuinely helps the session.
+              </p>
+            </div>
+
+            <label className="grid gap-2">
+              <span className="tv-label">Target mode</span>
+              <select
+                className="tv-input"
+                value={runTargetMode}
+                onChange={(event) => {
+                  setRunTargetMode(event.target.value as RunTargetMode);
+                  setTargetModeTouched(true);
+                  setSaved(false);
+                }}
+              >
+                <option value="auto">Auto from plan</option>
+                <option value="open">Effort / open — no pace alerts</option>
+                <option value="pace">Pace band</option>
+                <option value="heart_rate">Heart-rate band</option>
+              </select>
+            </label>
+
+            {runTargetMode === "pace" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="tv-label">Fastest pace /km</span>
+                  <input
+                    className="tv-input"
+                    inputMode="numeric"
+                    value={fastestPace}
+                    onChange={(event) => {
+                      setFastestPace(event.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder="5:20"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="tv-label">Slowest pace /km</span>
+                  <input
+                    className="tv-input"
+                    inputMode="numeric"
+                    value={slowestPace}
+                    onChange={(event) => {
+                      setSlowestPace(event.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder="6:00"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            {runTargetMode === "heart_rate" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="tv-label">Minimum HR</span>
+                  <input
+                    className="tv-input"
+                    type="number"
+                    min="60"
+                    max="230"
+                    inputMode="numeric"
+                    value={minimumHeartRate}
+                    onChange={(event) => {
+                      setMinimumHeartRate(event.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder="135"
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="tv-label">Maximum HR</span>
+                  <input
+                    className="tv-input"
+                    type="number"
+                    min="60"
+                    max="230"
+                    inputMode="numeric"
+                    value={maximumHeartRate}
+                    onChange={(event) => {
+                      setMaximumHeartRate(event.target.value);
+                      setSaved(false);
+                    }}
+                    placeholder="155"
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <p className="text-xs font-bold text-[var(--muted)]">
+              This changes the structured Garmin work step too — not just the text shown in TrainVault.
+            </p>
+          </div>
+        ) : null}
+
         <label className="grid gap-2 md:col-span-2">
           <span className="tv-label">Target Stimulus</span>
           <textarea
@@ -244,7 +523,12 @@ export default function WorkoutEditPanel({ workout, sourceWorkout, onClose }: Wo
           <textarea
             className="tv-input min-h-24 resize-y py-3"
             value={focusText}
-            onChange={(event) => setFocusText(event.target.value)}
+            onChange={(event) => {
+              const next = event.target.value;
+              setFocusText(next);
+              maybeDefaultTerrainToOpen(title, next);
+              setSaved(false);
+            }}
             placeholder="engine, skill, pacing"
           />
         </label>

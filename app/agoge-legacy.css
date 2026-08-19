@@ -1,0 +1,34 @@
+/* Temporary compatibility layer while older screens finish migrating from the TrainVault neon palette. */
+[class*="bg-[rgba(215,255,47"] {
+  background-color: var(--accent-soft) !important;
+}
+
+[class*="border-[rgba(215,255,47"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border)) !important;
+}
+
+[class*="shadow-[0_0_"][class*="rgba(215,255,47"] {
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 20%, transparent) !important;
+}
+
+[class*="text-[var(--accent)]"] {
+  text-decoration-color: var(--accent);
+}
+
+html:not([data-theme="dark"]) .tv-card [class*="bg-black"]:not(.premium-workout-card-overlay):not(.premium-workout-card-gloss) {
+  background-color: var(--surface-strong) !important;
+}
+
+html:not([data-theme="dark"]) .tv-card [class*="text-white"] {
+  color: var(--text);
+}
+
+.hero-media [class*="bg-black"],
+.premium-workout-card [class*="bg-black"] {
+  background-color: rgba(4, 18, 38, 0.74) !important;
+}
+
+.hero-media [class*="text-white"],
+.premium-workout-card [class*="text-white"] {
+  color: #ffffff !important;
+}

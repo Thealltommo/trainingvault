@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   CalendarDays,
   Database,
+  DatabaseBackup,
   FileJson,
   Gauge,
   LogOut,
@@ -199,7 +200,14 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Link href="/admin/device-backup" className="tv-card tv-card-hover p-4">
+          <DatabaseBackup className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
+          <h2 className="mt-3 text-xl font-black uppercase">Full device backup</h2>
+          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+            Download every TrainVault browser-state key on this device before cloud restores or redesign work.
+          </p>
+        </Link>
         <Link href="/settings/events" className="tv-card tv-card-hover p-4">
           <CalendarDays className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
           <h2 className="mt-3 text-xl font-black uppercase">Events and priorities</h2>
@@ -211,7 +219,7 @@ export default function SettingsPage() {
           <FileJson className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
           <h2 className="mt-3 text-xl font-black uppercase">Import / export JSON</h2>
           <p className="mt-1 text-sm font-bold text-[var(--muted)]">
-            Preserve the programme and full-snapshot escape hatch.
+            Preserve programme JSON and the legacy programme/log backup format.
           </p>
         </Link>
         <Link href="/program" className="tv-card tv-card-hover p-4">

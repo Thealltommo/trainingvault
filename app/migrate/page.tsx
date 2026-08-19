@@ -82,6 +82,7 @@ export default function MigratePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [done, setDone] = useState(false);
+  const [legacyFinished, setLegacyFinished] = useState(false);
   const [host, setHost] = useState<string | null>(null);
   const isLegacyHost = useMemo(() => host === new URL(LEGACY_ORIGIN).host, [host]);
 
@@ -95,6 +96,7 @@ export default function MigratePage() {
     const targetOrigin = getTargetOrigin();
     if (!targetOrigin || !window.opener) {
       setStatus("Open this recovery page from The Agoge so the old data has somewhere safe to go.");
+      setLegacyFinished(true);
       return;
     }
 
@@ -102,6 +104,7 @@ export default function MigratePage() {
     let closeTimer: number | null = null;
 
     void (async () => {
+      setLegacyFinished(false);
       const localSnapshot = getTrainVaultSnapshot();
       const localHasData = snapshotHasData(localSnapshot);
       let cloudSnapshot: TrainVaultSnapshot | null = null;
@@ -128,6 +131,7 @@ export default function MigratePage() {
 
       if (!snapshot || !snapshotHasData(snapshot)) {
         setStatus("No TrainVault programme or session history was found in the old browser or the original cloud backup.");
+        setLegacyFinished(true);
         return;
       }
 
@@ -146,6 +150,7 @@ export default function MigratePage() {
       );
       setStatus(`Recovered ${snapshot.logs.length} session${snapshot.logs.length === 1 ? "" : "s"} from old TrainVault ${source}.`);
       setDone(true);
+      setLegacyFinished(true);
 
       closeTimer = window.setTimeout(() => window.close(), 1100);
     })();
@@ -226,10 +231,21 @@ export default function MigratePage() {
           <AgogeWarriorArt className="pointer-events-none absolute -right-28 -top-24 h-[30rem] w-[30rem] opacity-[0.32]" variant="combined" />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(4,18,38,0.48),rgba(4,18,38,0.96))]" />
           <div className="relative z-10">
-            {done ? <CheckCircle2 className="mx-auto h-10 w-10 text-[#5ee493]" aria-hidden="true" /> : <LoaderCircle className="mx-auto h-10 w-10 animate-spin text-[#7fb0ff]" aria-hidden="true" />}
+            {done ? (
+              <CheckCircle2 className="mx-auto h-10 w-10 text-[#5ee493]" aria-hidden="true" />
+            ) : legacyFinished ? (
+              <DatabaseBackup className="mx-auto h-10 w-10 text-[#ffb454]" aria-hidden="true" />
+            ) : (
+              <LoaderCircle className="mx-auto h-10 w-10 animate-spin text-[#7fb0ff]" aria-hidden="true" />
+            )}
             <p className="mt-4 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[#7fb0ff]">TrainVault handoff</p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight">{done ? "Data sent." : "Recovering the old vault..."}</h1>
+            <h1 className="mt-2 text-2xl font-black tracking-tight">
+              {done ? "Data sent." : legacyFinished ? "Recovery finished." : "Recovering the old vault..."}
+            </h1>
             <p className="mt-2 text-sm font-semibold leading-relaxed text-[#b7c7d9]">{status}</p>
+            {legacyFinished && !done ? (
+              <p className="mt-3 text-xs font-bold text-[#ffcf8a]">This is a finished state — it is not still searching.</p>
+            ) : null}
           </div>
         </section>
       </div>

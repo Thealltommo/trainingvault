@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const AUTH_COOKIE = "trainvault_auth";
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
   const isLoginRoute = pathname === "/login";
   const isLoginApiRoute = pathname === "/api/login";
   const isAuthed = request.cookies.get(AUTH_COOKIE)?.value === "1";
@@ -13,12 +13,14 @@ export function middleware(request: NextRequest) {
   }
 
   if (isLoginRoute && isAuthed) {
-    return NextResponse.redirect(new URL("/", request.url));
+    const next = request.nextUrl.searchParams.get("next");
+    const destination = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
   if (!isLoginRoute && !isAuthed) {
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("next", pathname);
+    loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
   }
 

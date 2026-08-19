@@ -30,13 +30,13 @@ export default function AppShell({ children }: AppShellProps) {
 
       <aside className="tv-sidebar fixed inset-y-0 left-0 z-40 hidden w-[15.5rem] border-r border-[var(--border)] px-5 py-6 md:flex md:flex-col">
         <Link href="/" className="mb-9 flex min-h-12 items-center gap-3.5">
-          <span className="tv-brand-mark">
+          <span className="tv-brand-mark border-[rgba(255,64,86,0.55)] bg-[#08182d] text-[#dce8ff] shadow-[0_0_0_3px_rgba(79,140,255,0.07)]">
             <Dumbbell className="h-5.5 w-5.5" strokeWidth={2.6} aria-hidden="true" />
           </span>
           <span className="min-w-0">
-            <span className="block text-[1.05rem] font-[850] uppercase leading-none tracking-[-0.035em]">TrainVault</span>
+            <span className="block text-[1.05rem] font-[850] uppercase leading-none tracking-[-0.035em]">The Agoge</span>
             <span className="mt-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.13em] text-[var(--muted)]">
-              Private athlete OS · V4
+              Athlete OS · V4
             </span>
           </span>
         </Link>
@@ -44,7 +44,7 @@ export default function AppShell({ children }: AppShellProps) {
         <div className="mb-4 flex items-center justify-between border-y border-white/[0.055] py-3">
           <span className="text-[0.57rem] font-bold uppercase tracking-[0.16em] text-[var(--quiet)]">Navigation</span>
           <span className="flex items-center gap-1.5 text-[0.57rem] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_10px_rgba(215,255,47,0.55)]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_10px_rgba(79,140,255,0.55)]" />
             Active
           </span>
         </div>
@@ -84,13 +84,13 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#060806]/90 px-4 backdrop-blur-2xl md:hidden">
+      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#07101e]/90 px-4 backdrop-blur-2xl md:hidden">
         <Link href="/" className="flex min-h-11 items-center gap-2.5">
-          <span className="tv-brand-mark h-8 w-8 rounded-lg">
+          <span className="tv-brand-mark h-8 w-8 rounded-lg border-[rgba(255,64,86,0.55)] bg-[#08182d] text-[#dce8ff]">
             <Dumbbell className="h-4 w-4" strokeWidth={2.6} aria-hidden="true" />
           </span>
           <span>
-            <span className="block text-sm font-[850] uppercase leading-none tracking-[-0.03em]">TrainVault</span>
+            <span className="block text-sm font-[850] uppercase leading-none tracking-[-0.03em]">The Agoge</span>
             <span className="mt-1 block text-[0.55rem] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">Athlete OS · V4</span>
           </span>
         </Link>
@@ -101,7 +101,7 @@ export default function AppShell({ children }: AppShellProps) {
             aria-current={pathname.startsWith("/command") ? "page" : undefined}
             className={`grid h-10 w-10 place-items-center rounded-xl border backdrop-blur ${
               pathname.startsWith("/command")
-                ? "border-[rgba(215,255,47,0.34)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
+                ? "border-[rgba(79,140,255,0.34)] bg-[rgba(79,140,255,0.08)] text-[var(--accent)]"
                 : "border-[var(--border)] bg-black/20 text-[var(--muted)]"
             }`}
           >
@@ -113,7 +113,7 @@ export default function AppShell({ children }: AppShellProps) {
             aria-current={pathname.startsWith("/settings") ? "page" : undefined}
             className={`grid h-10 w-10 place-items-center rounded-xl border backdrop-blur ${
               pathname.startsWith("/settings")
-                ? "border-[rgba(215,255,47,0.34)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
+                ? "border-[rgba(255,64,86,0.34)] bg-[rgba(255,64,86,0.08)] text-[#ff6a7b]"
                 : "border-[var(--border)] bg-black/20 text-[var(--muted)]"
             }`}
           >
@@ -135,10 +135,10 @@ export default function AppShell({ children }: AppShellProps) {
           {showPlanStudioPrompt ? (
             <Link
               href="/plan/build"
-              className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-[rgba(215,255,47,0.22)] bg-[linear-gradient(100deg,rgba(215,255,47,0.085),rgba(215,255,47,0.018)_52%,rgba(255,255,255,0.012))] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.16)] transition-transform hover:-translate-y-0.5 sm:p-5"
+              className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-[rgba(79,140,255,0.22)] bg-[linear-gradient(100deg,rgba(79,140,255,0.085),rgba(79,140,255,0.018)_52%,rgba(255,64,86,0.018))] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.16)] transition-transform hover:-translate-y-0.5 sm:p-5"
             >
               <div className="flex min-w-0 items-center gap-3.5">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[rgba(215,255,47,0.32)] bg-[rgba(215,255,47,0.1)] text-[var(--accent)]">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[rgba(79,140,255,0.32)] bg-[rgba(79,140,255,0.1)] text-[var(--accent)]">
                   <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">

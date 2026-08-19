@@ -6,14 +6,14 @@ import "./polish.css";
 import "./editorial.css";
 
 export const metadata: Metadata = {
-  title: "TrainVault · V4 Athlete OS",
+  title: "The Agoge · V4 Athlete OS",
   description: "Private athlete intelligence for planning, recovery, Garmin, activity analysis and adaptive coaching.",
-  applicationName: "TrainVault",
+  applicationName: "The Agoge",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "TrainVault",
+    title: "The Agoge",
   },
   formatDetection: {
     telephone: false,
@@ -27,7 +27,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#060806",
+  themeColor: "#07101e",
   colorScheme: "dark",
 };
 

@@ -1,10 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TrainVault">
-  <rect width="512" height="512" fill="#d7ff1f"/>
-  <g fill="#050505">
-    <rect x="126" y="226" width="260" height="60" rx="30"/>
-    <rect x="96" y="198" width="48" height="116" rx="16"/>
-    <rect x="368" y="198" width="48" height="116" rx="16"/>
-    <rect x="150" y="180" width="30" height="152" rx="10"/>
-    <rect x="332" y="180" width="30" height="152" rx="10"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="The Agoge">
+  <defs>
+    <linearGradient id="bg" x1="30" y1="28" x2="480" y2="490" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a2445"/>
+      <stop offset="1" stop-color="#07101e"/>
+    </linearGradient>
+    <linearGradient id="crest" x1="146" y1="120" x2="372" y2="394" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6fa2ff"/>
+      <stop offset="1" stop-color="#2f6fe0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#ff4056" stroke-width="16"/>
+  <path d="M256 112c-74 0-128 40-147 93 32-15 66-18 99-9 14-21 29-33 48-41 19 8 34 20 48 41 33-9 67-6 99 9-19-53-73-93-147-93Z" fill="#ff4056"/>
+  <path d="M166 213c0-41 40-75 90-75s90 34 90 75v61c0 45-33 85-90 120-57-35-90-75-90-120v-61Z" fill="url(#crest)" stroke="#b9d4ff" stroke-width="8"/>
+  <path d="M194 221l47 9 15 32 15-32 47-9-13 66-49 40-49-40-13-66Z" fill="#07162a"/>
+  <path d="M214 240l28 7-10 23-28-8 10-22Zm84 0-28 7 10 23 28-8-10-22Z" fill="#ff4056"/>
+  <path d="M256 173v154" stroke="#8bb5ff" stroke-width="7" opacity=".65"/>
 </svg>

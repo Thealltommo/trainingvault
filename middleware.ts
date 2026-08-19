@@ -6,9 +6,10 @@ export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const isLoginRoute = pathname === "/login";
   const isLoginApiRoute = pathname === "/api/login";
+  const isMigrationReceiveRoute = pathname === "/api/migrate/receive";
   const isAuthed = request.cookies.get(AUTH_COOKIE)?.value === "1";
 
-  if (isLoginApiRoute) {
+  if (isLoginApiRoute || isMigrationReceiveRoute) {
     return NextResponse.next();
   }
 

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { BrainCircuit, CheckCircle2, ChevronRight, ShieldCheck, TriangleAlert } from "lucide-react";
+import { BrainCircuit, CheckCircle2, ChevronRight, DatabaseBackup, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
+import AgogeWarriorArt from "@/components/AgogeWarriorArt";
 import WorkoutCard from "@/components/WorkoutCard";
 import { auditCurrentPlan } from "@/lib/coaching";
 import {
@@ -63,11 +64,29 @@ export default function ProgramPage() {
   if (!programme) {
     return (
       <div className="agoge-page">
-        <section className="tv-card p-5 sm:p-6">
-          <p className="tv-label text-[var(--accent)]">Training plan</p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight">No programme imported yet.</h1>
-          <p className="mt-2 max-w-2xl text-sm font-semibold text-[var(--muted)]">Import a programme JSON or restore the sample block from Data & Import.</p>
-          <Link href="/admin/import" className="tv-button-primary mt-5 w-fit">Import programme</Link>
+        <section className="relative min-h-[330px] overflow-hidden rounded-2xl border border-white/10 bg-[var(--sidebar)] p-5 text-white shadow-[var(--shadow-strong)] sm:p-7">
+          <AgogeWarriorArt className="pointer-events-none absolute -right-20 -top-24 h-[34rem] w-[34rem] opacity-[0.46]" variant="combined" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(4,16,34,0.99)_0%,rgba(4,20,43,0.9)_55%,rgba(4,20,43,0.25)_100%)]" />
+          <div className="relative z-10 flex min-h-[285px] max-w-2xl flex-col justify-end">
+            <p className="text-[0.68rem] font-black uppercase tracking-[0.15em] text-[#82afff]">Training plan</p>
+            <h1 className="mt-2 text-3xl font-black tracking-[-0.045em] sm:text-4xl">Build the plan here.</h1>
+            <p className="mt-3 text-sm font-semibold leading-relaxed text-[#b9c8da]">
+              Importing JSON is now the escape hatch, not the main workflow. Build a history-aware plan inside The Agoge, or recover the programme and logs you already had in TrainVault.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link href="/program/build" className="tv-button-primary">
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                Build training plan
+              </Link>
+              <Link href="/migrate" className="tv-button-ghost border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white">
+                <DatabaseBackup className="h-4 w-4" aria-hidden="true" />
+                Recover TrainVault data
+              </Link>
+              <Link href="/admin/import" className="inline-flex min-h-10 items-center px-2 text-xs font-extrabold text-[#9db5d2] hover:text-white">
+                Advanced JSON import
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
     );
@@ -83,12 +102,16 @@ export default function ProgramPage() {
               <h1 className="mt-1 text-2xl font-black tracking-[-0.035em] sm:text-3xl">{programme.name}</h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[var(--muted)]">{programme.description}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="tv-chip border-[var(--border)] bg-[var(--surface-strong)] text-[var(--muted)]">{programme.durationWeeks} weeks</span>
               <span className="tv-chip border-[var(--border)] bg-[var(--surface-strong)] text-[var(--muted)]">{workouts.length} sessions</span>
               <span className="tv-chip border-[var(--border)] bg-[var(--surface-strong)] text-[var(--muted)]">{completedWorkoutIds.size} logged</span>
               {modifiedWorkoutCount > 0 ? <span className="tv-chip border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">{modifiedWorkoutCount} adjusted</span> : null}
               {todayOverride ? <span className="tv-chip border-[var(--red)] bg-[var(--red-soft)] text-[var(--red)]">Manual today</span> : null}
+              <Link href="/program/build" className="tv-button-ghost min-h-8 px-2.5 py-1.5 text-xs">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                Build / replace
+              </Link>
             </div>
           </div>
         </article>

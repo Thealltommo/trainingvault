@@ -2,11 +2,20 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const AUTH_COOKIE = "trainvault_auth";
 
-function loginRedirect(request: NextRequest, error?: string) {
+function safeNext(value: FormDataEntryValue | null) {
+  const next = String(value ?? "");
+  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
+function loginRedirect(request: NextRequest, error?: string, next = "/") {
   const url = new URL("/login", request.url);
 
   if (error) {
     url.searchParams.set("error", error);
+  }
+
+  if (next !== "/") {
+    url.searchParams.set("next", next);
   }
 
   return NextResponse.redirect(url, 303);
@@ -15,17 +24,18 @@ function loginRedirect(request: NextRequest, error?: string) {
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const submittedPassword = String(formData.get("password") ?? "");
+  const next = safeNext(formData.get("next"));
   const expectedPassword = process.env.TRAINVAULT_PASSWORD;
 
   if (!expectedPassword) {
-    return loginRedirect(request, "missing-password");
+    return loginRedirect(request, "missing-password", next);
   }
 
   if (submittedPassword !== expectedPassword) {
-    return loginRedirect(request, "invalid");
+    return loginRedirect(request, "invalid", next);
   }
 
-  const response = NextResponse.redirect(new URL("/", request.url), 303);
+  const response = NextResponse.redirect(new URL(next, request.url), 303);
   response.cookies.set({
     name: AUTH_COOKIE,
     value: "1",

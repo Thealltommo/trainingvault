@@ -10,15 +10,19 @@ import {
   CalendarDays,
   Check,
   ChevronRight,
+  DatabaseBackup,
   Dumbbell,
   Gauge,
   Mountain,
+  Plus,
   Route,
   ShieldCheck,
+  Sparkles,
   Target,
   TriangleAlert,
   Upload,
 } from "lucide-react";
+import AgogeWarriorArt from "@/components/AgogeWarriorArt";
 import {
   auditCurrentPlan,
   buildCoachingInsights,
@@ -26,7 +30,6 @@ import {
   buildWeeklyTrend,
   getGoalCopy,
 } from "@/lib/coaching";
-import { HERO_IMAGES } from "@/lib/hero-images";
 import {
   getNextIncompleteWorkout,
   getTodaysWorkout,
@@ -86,33 +89,35 @@ export default function Home() {
   if (!programme) {
     return (
       <div className="agoge-page">
-        <section className="relative min-h-[340px] overflow-hidden rounded-2xl border border-white/10 bg-[var(--sidebar)] text-white shadow-[var(--shadow-strong)]">
-          <Image
-            src={HERO_IMAGES.home}
-            alt=""
-            fill
-            priority
-            sizes="(max-width: 768px) 100vw, 1200px"
-            className="object-cover opacity-55"
-            style={{ objectPosition: "60% center" }}
-          />
-          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,15,32,0.97)_0%,rgba(3,20,42,0.85)_46%,rgba(3,20,42,0.22)_100%)]" />
+        <section className="relative min-h-[390px] overflow-hidden rounded-2xl border border-white/10 bg-[var(--sidebar)] text-white shadow-[var(--shadow-strong)]">
+          <AgogeWarriorArt className="pointer-events-none absolute -right-24 -top-24 h-[38rem] w-[38rem] opacity-[0.52]" variant="combined" />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,15,32,0.99)_0%,rgba(3,20,42,0.9)_50%,rgba(3,20,42,0.28)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 h-1 bg-[linear-gradient(90deg,var(--accent),var(--red),transparent)]" />
-          <div className="relative z-10 flex min-h-[340px] max-w-3xl flex-col justify-end p-6 sm:p-8">
+          <div className="relative z-10 flex min-h-[390px] max-w-3xl flex-col justify-end p-6 sm:p-8">
             <p className="text-xs font-black uppercase tracking-[0.18em] text-[#7fb0ff]">The Agoge</p>
             <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] sm:text-6xl">Train. Adapt. Conquer.</h1>
             <p className="mt-3 max-w-2xl text-base font-semibold leading-relaxed text-[#c4d1e0]">
-              Import your programme and the dashboard will audit its structure, learn from session RPE and run metrics, and surface the training decisions that actually matter.
+              {logs.length > 0
+                ? `${logs.length} existing training session${logs.length === 1 ? " is" : "s are"} already visible. Build the next block from that history or recover the rest of TrainVault.`
+                : "Your old TrainVault history should come with you. Recover it first, then build the next block inside The Agoge — no JSON required."}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/admin/import" className="tv-button-primary">
-                <Upload className="h-4 w-4" aria-hidden="true" />
-                Import programme
+              <Link href="/migrate" className="tv-button-primary">
+                <DatabaseBackup className="h-4 w-4" aria-hidden="true" />
+                Recover TrainVault data
               </Link>
-              <Link href="/coaching" className="tv-button-ghost border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white">
-                See coaching model
+              <Link href="/program/build" className="tv-button-ghost border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white">
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                Build training plan
+              </Link>
+              <Link href="/log" className="tv-button-ghost border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Log a run
               </Link>
             </div>
+            <Link href="/admin/import" className="mt-4 w-fit text-xs font-bold text-[#8ea4bf] hover:text-white">
+              Advanced: JSON import / manual cloud controls
+            </Link>
           </div>
         </section>
       </div>
@@ -291,15 +296,8 @@ export default function Home() {
 
         <aside className="grid content-start gap-3">
           <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[var(--sidebar)] p-4 text-white shadow-[var(--shadow)]">
-            <Image
-              src="/assets/hero4.png"
-              alt=""
-              fill
-              sizes="360px"
-              className="object-cover opacity-24"
-              style={{ objectPosition: "70% center" }}
-            />
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,18,38,0.55),rgba(4,18,38,0.96))]" />
+            <AgogeWarriorArt className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 opacity-[0.36]" variant="combined" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,18,38,0.25),rgba(4,18,38,0.96))]" />
             <div className="relative z-10">
               <p className="text-[0.65rem] font-black uppercase tracking-[0.14em] text-[#88b4ff]">Primary mission</p>
               <h2 className="mt-2 text-xl font-black tracking-tight">{goals.primary}</h2>
@@ -426,19 +424,19 @@ export default function Home() {
           </div>
           <BrainCircuit className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
         </Link>
-        <Link href="/program" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
+        <Link href="/program/build" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
           <div>
-            <p className="tv-label text-[var(--accent)]">Training plan</p>
-            <p className="mt-1 font-black tracking-tight">Sessions, moves, scaling and edits</p>
+            <p className="tv-label text-[var(--accent)]">Plan builder</p>
+            <p className="mt-1 font-black tracking-tight">Generate the next adaptive block</p>
           </div>
-          <Dumbbell className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+          <Sparkles className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
         </Link>
-        <Link href="/admin/import" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
+        <Link href="/log" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
           <div>
-            <p className="tv-label text-[var(--red)]">Data</p>
-            <p className="mt-1 font-black tracking-tight">Import, sync and programme control</p>
+            <p className="tv-label text-[var(--red)]">Quick log</p>
+            <p className="mt-1 font-black tracking-tight">Add a run without opening a plan</p>
           </div>
-          <Upload className="h-5 w-5 shrink-0 text-[var(--red)]" aria-hidden="true" />
+          <Plus className="h-5 w-5 shrink-0 text-[var(--red)]" aria-hidden="true" />
         </Link>
       </section>
     </div>

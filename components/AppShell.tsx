@@ -2,11 +2,12 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Database, Moon, Shield, Sun, Upload } from "lucide-react";
+import AgogeWarriorArt from "./AgogeWarriorArt";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
+import CloudBootstrap from "./CloudBootstrap";
 
 type AppShellProps = {
   children: ReactNode;
@@ -20,6 +21,7 @@ function routeTitle(pathname: string) {
   const active = navItems.find((item) => isRouteActive(item, pathname));
   if (active) return active.label;
   if (pathname.startsWith("/admin")) return "Data & Import";
+  if (pathname.startsWith("/migrate")) return "Recover Data";
   if (pathname.startsWith("/debug")) return "Diagnostics";
   return "The Agoge";
 }
@@ -56,17 +58,10 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--text)]">
+      <CloudBootstrap />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 overflow-hidden border-r border-white/10 bg-[var(--sidebar)] text-[var(--sidebar-text)] md:flex md:flex-col">
-        <Image
-          src="/assets/hero8.png"
-          alt=""
-          fill
-          sizes="240px"
-          className="pointer-events-none object-cover opacity-20"
-          style={{ objectPosition: "57% center" }}
-          priority
-        />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(4,17,36,0.6)_0%,rgba(4,17,36,0.9)_48%,rgba(4,17,36,0.99)_100%)]" />
+        <AgogeWarriorArt className="pointer-events-none absolute -left-28 bottom-7 h-[34rem] w-[34rem] opacity-24" variant="combined" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(4,17,36,0.18)_0%,rgba(4,17,36,0.68)_48%,rgba(4,17,36,0.98)_100%)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-[radial-gradient(circle_at_35%_100%,rgba(221,31,54,0.24),transparent_65%)]" />
 
         <div className="relative z-10 flex h-full flex-col px-3 py-4">
@@ -122,7 +117,7 @@ export default function AppShell({ children }: AppShellProps) {
             </Link>
           </div>
 
-          <div className="mt-auto rounded-xl border border-white/10 bg-black/20 p-3 backdrop-blur-sm">
+          <div className="mt-auto rounded-xl border border-white/10 bg-black/25 p-3 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-xs font-bold text-[#b7c7da]">
               <Database className="h-4 w-4 text-[#74a6ff]" aria-hidden="true" />
               Your private training system

@@ -1,9 +1,33 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const AUTH_COOKIE = "trainvault_auth";
+const CANONICAL_APP_ORIGIN = "https://project-poo2v.vercel.app";
+
+function shouldCanonicalRedirect(request: NextRequest) {
+  const host = request.nextUrl.hostname.toLowerCase();
+  const pathname = request.nextUrl.pathname;
+
+  if (pathname.startsWith("/api/")) {
+    return false;
+  }
+
+  // The newer "trainingvault" Vercel project has a different browser-storage
+  // origin from the original TrainVault app. Keep the original origin canonical
+  // so the existing programme, logs and block history remain available in-place.
+  return (
+    host !== "project-poo2v.vercel.app" &&
+    host.startsWith("trainingvault-") &&
+    host.endsWith("-rays-projects-c6b158d1.vercel.app")
+  );
+}
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+
+  if (shouldCanonicalRedirect(request)) {
+    return NextResponse.redirect(new URL(`${pathname}${search}`, CANONICAL_APP_ORIGIN));
+  }
+
   const isLoginRoute = pathname === "/login";
   const isLoginApiRoute = pathname === "/api/login";
   const isMigrationReceiveRoute = pathname === "/api/migrate/receive";

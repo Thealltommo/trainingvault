@@ -18,7 +18,11 @@ import {
 } from "@/lib/storage";
 import type { TrainVaultSnapshot } from "@/lib/types";
 
-const LEGACY_ORIGIN = "https://trainvault-rays-projects-c6b158d1.vercel.app";
+const LEGACY_ORIGINS = [
+  "https://project-poo2v.vercel.app",
+  "https://trainvault-rays-projects-c6b158d1.vercel.app",
+  "https://trainvault-git-main-rays-projects-c6b158d1.vercel.app",
+] as const;
 const CURRENT_ORIGIN = "https://trainingvault-rays-projects-c6b158d1.vercel.app";
 const MESSAGE_TYPE = "agoge-trainvault-transfer-v1";
 
@@ -40,12 +44,8 @@ function snapshotHasData(snapshot: TrainVaultSnapshot | null | undefined) {
 function mergeSnapshots(localSnapshot: TrainVaultSnapshot, cloudSnapshot: TrainVaultSnapshot): TrainVaultSnapshot {
   const logsById = new Map<string, TrainVaultSnapshot["logs"][number]>();
 
-  for (const log of cloudSnapshot.logs ?? []) {
-    logsById.set(log.id, log);
-  }
-  for (const log of localSnapshot.logs ?? []) {
-    logsById.set(log.id, log);
-  }
+  for (const log of cloudSnapshot.logs ?? []) logsById.set(log.id, log);
+  for (const log of localSnapshot.logs ?? []) logsById.set(log.id, log);
 
   return {
     version: 2,
@@ -78,20 +78,26 @@ function getTargetOrigin() {
   return target === CURRENT_ORIGIN ? target : null;
 }
 
+function getLegacyOriginForHost(host: string | null) {
+  if (!host) return null;
+  return LEGACY_ORIGINS.find((origin) => new URL(origin).host === host) ?? null;
+}
+
 export default function MigratePage() {
   const [status, setStatus] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const [done, setDone] = useState(false);
   const [legacyFinished, setLegacyFinished] = useState(false);
   const [host, setHost] = useState<string | null>(null);
-  const isLegacyHost = useMemo(() => host === new URL(LEGACY_ORIGIN).host, [host]);
+  const legacyOrigin = useMemo(() => getLegacyOriginForHost(host), [host]);
+  const isLegacyHost = Boolean(legacyOrigin);
 
   useEffect(() => {
     setHost(window.location.host);
   }, []);
 
   useEffect(() => {
-    if (!isLegacyHost) return;
+    if (!isLegacyHost || !legacyOrigin) return;
 
     const targetOrigin = getTargetOrigin();
     if (!targetOrigin || !window.opener) {
@@ -109,14 +115,18 @@ export default function MigratePage() {
       const localHasData = snapshotHasData(localSnapshot);
       let cloudSnapshot: TrainVaultSnapshot | null = null;
 
-      setStatus(localHasData ? "Found old browser data. Checking the original TrainVault cloud backup too..." : "No browser snapshot found yet. Checking the original TrainVault cloud backup...");
+      const legacyIndex = LEGACY_ORIGINS.indexOf(legacyOrigin);
+      const attemptNumber = legacyIndex + 1;
+      setStatus(
+        localHasData
+          ? `Found old browser data on legacy address ${attemptNumber}/${LEGACY_ORIGINS.length}. Checking cloud too...`
+          : `Checking legacy address ${attemptNumber}/${LEGACY_ORIGINS.length} and the original cloud backup...`,
+      );
 
       try {
         const response = await fetch("/api/sync/pull", { cache: "no-store" });
         const payload = (await response.json().catch(() => ({}))) as { data?: TrainVaultSnapshot | null };
-        if (response.ok && snapshotHasData(payload.data)) {
-          cloudSnapshot = payload.data ?? null;
-        }
+        if (response.ok && snapshotHasData(payload.data)) cloudSnapshot = payload.data ?? null;
       } catch {
         // Browser-local recovery can still succeed even if the old cloud endpoint is unavailable.
       }
@@ -130,7 +140,16 @@ export default function MigratePage() {
           : cloudSnapshot;
 
       if (!snapshot || !snapshotHasData(snapshot)) {
-        setStatus("No TrainVault programme or session history was found in the old browser or the original cloud backup.");
+        const nextOrigin = LEGACY_ORIGINS[legacyIndex + 1];
+        if (nextOrigin) {
+          setStatus(`Nothing stored on legacy address ${attemptNumber}/${LEGACY_ORIGINS.length}. Trying the next historical TrainVault address...`);
+          closeTimer = window.setTimeout(() => {
+            window.location.replace(`${nextOrigin}/migrate?target=${encodeURIComponent(targetOrigin)}`);
+          }, 550);
+          return;
+        }
+
+        setStatus("Finished checking every known TrainVault address and the cloud store. No programme or session history was found on this browser.");
         setLegacyFinished(true);
         return;
       }
@@ -151,7 +170,6 @@ export default function MigratePage() {
       setStatus(`Recovered ${snapshot.logs.length} session${snapshot.logs.length === 1 ? "" : "s"} from old TrainVault ${source}.`);
       setDone(true);
       setLegacyFinished(true);
-
       closeTimer = window.setTimeout(() => window.close(), 1100);
     })();
 
@@ -159,13 +177,14 @@ export default function MigratePage() {
       cancelled = true;
       if (closeTimer !== null) window.clearTimeout(closeTimer);
     };
-  }, [isLegacyHost]);
+  }, [isLegacyHost, legacyOrigin]);
 
   useEffect(() => {
     if (isLegacyHost) return;
 
     function handleMessage(event: MessageEvent<unknown>) {
-      if (event.origin !== LEGACY_ORIGIN || !isTransferMessage(event.data)) return;
+      const allowedOrigin = LEGACY_ORIGINS.includes(event.origin as (typeof LEGACY_ORIGINS)[number]);
+      if (!allowedOrigin || !isTransferMessage(event.data)) return;
 
       restoreTrainVaultSnapshot(event.data.snapshot);
       setDone(true);
@@ -182,10 +201,10 @@ export default function MigratePage() {
   function recoverFromLegacyOrigin() {
     setIsWorking(true);
     setDone(false);
-    setStatus("Opening the original TrainVault to collect browser data and its cloud snapshot...");
+    setStatus("Checking every historical TrainVault address for browser data, then the old cloud store...");
     const targetOrigin = window.location.origin === CURRENT_ORIGIN ? CURRENT_ORIGIN : window.location.origin;
     const popup = window.open(
-      `${LEGACY_ORIGIN}/migrate?target=${encodeURIComponent(targetOrigin)}`,
+      `${LEGACY_ORIGINS[0]}/migrate?target=${encodeURIComponent(targetOrigin)}`,
       "trainvault-recovery",
       "popup,width=520,height=720",
     );
@@ -199,14 +218,14 @@ export default function MigratePage() {
   async function recoverFromCloud() {
     setIsWorking(true);
     setDone(false);
-    setStatus("Checking the Agoge cloud bridge for your existing TrainVault backup...");
+    setStatus("Checking The Agoge cloud store for your TrainVault backup...");
 
     try {
       const response = await fetch("/api/sync/pull", { cache: "no-store" });
       const payload = (await response.json().catch(() => ({}))) as { data?: TrainVaultSnapshot; error?: string };
 
       if (!response.ok) throw new Error(payload.error ?? "Cloud recovery failed.");
-      if (!payload.data) throw new Error("No TrainVault cloud backup was found.");
+      if (!payload.data) throw new Error("No TrainVault cloud backup was found. Try the old browser recovery — historical TrainVault data was primarily browser-local.");
 
       restoreTrainVaultSnapshot(payload.data);
       setDone(true);
@@ -216,7 +235,7 @@ export default function MigratePage() {
       const upstreamFailure = /fetch failed|cloud bridge|supabase|upstream/i.test(message);
       setStatus(
         upstreamFailure
-          ? "The new Agoge deployment cannot currently reach the old TrainVault cloud store directly. Use “Recover from old TrainVault” below — that route checks both the original browser storage and the original cloud source."
+          ? "The cloud store is waking up or temporarily unavailable. Use “Recover from old TrainVault” — it checks all known historical browser origins as well."
           : message,
       );
     } finally {
@@ -271,7 +290,7 @@ export default function MigratePage() {
             </div>
             <h1 className="mt-3 max-w-lg text-3xl font-black tracking-[-0.045em] sm:text-4xl">Bring the old vault into The Agoge.</h1>
             <p className="mt-3 max-w-lg text-sm font-semibold leading-relaxed text-[#bccbdd] sm:text-base">
-              We check the existing TrainVault cloud first. If that bridge is unavailable, the original TrainVault route can recover browser storage and the old cloud source directly.
+              Recovery now checks the original project address plus both TrainVault aliases, because browser storage belongs to the exact web address that created it.
             </p>
           </div>
         </div>
@@ -284,7 +303,7 @@ export default function MigratePage() {
             </button>
             <button type="button" onClick={recoverFromLegacyOrigin} disabled={isWorking} className="tv-button-ghost min-h-14 disabled:opacity-50">
               <DatabaseBackup className="h-5 w-5" aria-hidden="true" />
-              Recover from old TrainVault
+              Scan old TrainVault data
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>

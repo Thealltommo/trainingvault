@@ -86,7 +86,7 @@ export default function BottomNav() {
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(0.45rem,env(safe-area-inset-bottom))] md:hidden"
     >
-      <div className="mx-auto grid max-w-lg grid-cols-5 overflow-hidden rounded-[1.2rem] border border-white/[0.1] bg-[#080b08]/94 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
+      <div className="mx-auto grid max-w-lg grid-cols-5 overflow-hidden rounded-[1.2rem] border border-[var(--border)] bg-[color:var(--surface-glass)] p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
         {mobileNavItems.map((item) => {
           const Icon = item.icon;
           const active = isRouteActive(item, pathname);
@@ -97,12 +97,14 @@ export default function BottomNav() {
               href={item.href}
               className={`relative flex min-h-14 flex-col items-center justify-center gap-1 rounded-[0.85rem] px-1 text-[0.58rem] font-[780] uppercase tracking-[0.04em] transition-colors ${
                 active
-                  ? "bg-[rgba(215,255,47,0.09)] text-[var(--accent)]"
+                  ? "bg-[var(--accent-wash)] text-[var(--accent)]"
                   : "text-[var(--muted)]"
               }`}
               aria-current={active ? "page" : undefined}
             >
-              {active ? <span className="absolute inset-x-5 top-0 h-px bg-[var(--accent)] shadow-[0_0_10px_rgba(215,255,47,0.6)]" /> : null}
+              {active ? (
+                <span className="absolute inset-x-5 top-0 h-px bg-[var(--agoge-red)] shadow-[0_0_10px_rgba(255,64,86,0.55)]" />
+              ) : null}
               <Icon aria-hidden="true" className="h-[1.05rem] w-[1.05rem]" strokeWidth={2.1} />
               <span>{item.label}</span>
             </Link>

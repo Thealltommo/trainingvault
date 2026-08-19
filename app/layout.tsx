@@ -4,16 +4,17 @@ import CompletedReviewRedirect from "@/components/CompletedReviewRedirect";
 import "./globals.css";
 import "./polish.css";
 import "./editorial.css";
+import "./agoge-v4.css";
 
 export const metadata: Metadata = {
-  title: "TrainVault · V4 Athlete OS",
+  title: "The Agoge · Athlete OS V4",
   description: "Private athlete intelligence for planning, recovery, Garmin, activity analysis and adaptive coaching.",
-  applicationName: "TrainVault",
+  applicationName: "The Agoge",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "TrainVault",
+    title: "The Agoge",
   },
   formatDetection: {
     telephone: false,
@@ -27,8 +28,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#060806",
-  colorScheme: "dark",
+  themeColor: "#07101e",
+  colorScheme: "dark light",
 };
 
 export default function RootLayout({
@@ -37,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
+    <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full antialiased">
         <CompletedReviewRedirect />
         <AppShell>{children}</AppShell>

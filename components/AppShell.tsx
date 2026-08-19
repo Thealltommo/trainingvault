@@ -1,9 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRight, Dumbbell, Gauge, Settings, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Gauge,
+  Moon,
+  Settings,
+  Shield,
+  Sparkles,
+  Sun,
+} from "lucide-react";
+import AgogeWarriorArt from "./AgogeWarriorArt";
 import BottomNav, { isRouteActive, navItems } from "./BottomNav";
 import CloudDeviceSync from "./CloudDeviceSync";
 import LatestSessionHero from "./LatestSessionHero";
@@ -14,11 +24,36 @@ type AppShellProps = {
   children: ReactNode;
 };
 
+type ThemeMode = "light" | "dark";
+
+const THEME_KEY = "agoge_theme_v1";
+
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isLogin = pathname.startsWith("/login");
   const showLatestSession = pathname === "/" || pathname.startsWith("/command");
   const showPlanStudioPrompt = pathname === "/plan";
+  const [theme, setTheme] = useState<ThemeMode>("dark");
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(THEME_KEY);
+    const preferred: ThemeMode =
+      stored === "light" || stored === "dark"
+        ? stored
+        : window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "light"
+          : "dark";
+
+    setTheme(preferred);
+    document.documentElement.dataset.theme = preferred;
+  }, []);
+
+  function toggleTheme() {
+    const nextTheme: ThemeMode = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    window.localStorage.setItem(THEME_KEY, nextTheme);
+  }
 
   if (isLogin) {
     return <>{children}</>;
@@ -29,80 +64,106 @@ export default function AppShell({ children }: AppShellProps) {
       <CloudDeviceSync />
 
       <aside className="tv-sidebar fixed inset-y-0 left-0 z-40 hidden w-[15.5rem] border-r border-[var(--border)] px-5 py-6 md:flex md:flex-col">
-        <Link href="/" className="mb-9 flex min-h-12 items-center gap-3.5">
-          <span className="tv-brand-mark">
-            <Dumbbell className="h-5.5 w-5.5" strokeWidth={2.6} aria-hidden="true" />
-          </span>
-          <span className="min-w-0">
-            <span className="block text-[1.05rem] font-[850] uppercase leading-none tracking-[-0.035em]">TrainVault</span>
-            <span className="mt-1.5 block text-[0.62rem] font-bold uppercase tracking-[0.13em] text-[var(--muted)]">
-              Private athlete OS · V4
+        <AgogeWarriorArt
+          className="agoge-shell-art pointer-events-none absolute -bottom-24 -left-24 h-[27rem] w-[27rem] opacity-[0.18]"
+          variant="warrior"
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-80 bg-[linear-gradient(180deg,transparent,rgba(4,13,27,0.92))]" />
+
+        <div className="relative z-10 flex h-full flex-col">
+          <Link href="/" className="mb-8 flex min-h-12 items-center gap-3.5">
+            <span className="tv-brand-mark relative">
+              <Shield className="h-6 w-6" strokeWidth={2.25} aria-hidden="true" />
+              <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-[var(--agoge-red)] ring-2 ring-[#07162a]" />
             </span>
-          </span>
-        </Link>
+            <span className="min-w-0">
+              <span className="agoge-wordmark block text-[1.13rem] font-[900] uppercase leading-none">The Agoge</span>
+              <span className="agoge-submark mt-1.5 block text-[0.59rem] font-bold uppercase">
+                Athlete OS · V4
+              </span>
+            </span>
+          </Link>
 
-        <div className="mb-4 flex items-center justify-between border-y border-white/[0.055] py-3">
-          <span className="text-[0.57rem] font-bold uppercase tracking-[0.16em] text-[var(--quiet)]">Navigation</span>
-          <span className="flex items-center gap-1.5 text-[0.57rem] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_10px_rgba(215,255,47,0.55)]" />
-            Active
-          </span>
-        </div>
+          <div className="mb-4 flex items-center justify-between border-y border-white/[0.055] py-3">
+            <span className="text-[0.57rem] font-bold uppercase tracking-[0.16em] text-[var(--quiet)]">Navigation</span>
+            <span className="flex items-center gap-1.5 text-[0.57rem] font-bold uppercase tracking-[0.12em] text-[var(--muted)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--agoge-red)] shadow-[0_0_10px_rgba(255,64,86,0.5)]" />
+              Live
+            </span>
+          </div>
 
-        <nav aria-label="Primary" className="flex flex-col gap-1">
-          {navItems.map((item, index) => {
-            const Icon = item.icon;
-            const active = isRouteActive(item, pathname);
+          <nav aria-label="Primary" className="flex flex-col gap-1">
+            {navItems.map((item, index) => {
+              const Icon = item.icon;
+              const active = isRouteActive(item, pathname);
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={`tv-nav-item ${active ? "tv-nav-item-active" : ""}`}
-              >
-                <span className="tv-nav-index">{String(index + 1).padStart(2, "0")}</span>
-                <Icon className="h-[1.05rem] w-[1.05rem]" aria-hidden="true" strokeWidth={2.15} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={`tv-nav-item ${active ? "tv-nav-item-active" : ""}`}
+                >
+                  <span className="tv-nav-index">{String(index + 1).padStart(2, "0")}</span>
+                  <Icon className="h-[1.05rem] w-[1.05rem]" aria-hidden="true" strokeWidth={2.15} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
 
-        <div className="mt-auto pt-6">
-          <div className="border-t border-white/[0.065] pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[0.58rem] font-extrabold uppercase tracking-[0.15em] text-[var(--accent)]">
-                Evidence-led
+          <div className="mt-auto pt-6">
+            <div className="border-t border-white/[0.065] pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[0.58rem] font-extrabold uppercase tracking-[0.15em] text-[#78a8ff]">
+                  Train · adapt · conquer
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className="agoge-theme-toggle h-8 w-8 rounded-lg"
+                  aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                  title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+                >
+                  {theme === "dark" ? <Sun className="h-3.5 w-3.5" aria-hidden="true" /> : <Moon className="h-3.5 w-3.5" aria-hidden="true" />}
+                </button>
+              </div>
+              <p className="mt-2 text-[0.63rem] font-semibold leading-relaxed text-[var(--quiet)]">
+                Garmin, recovery, planning and coach decisions stay in one private athlete record.
               </p>
-              <span className="rounded-full border border-white/[0.08] px-2 py-1 text-[0.52rem] font-bold uppercase tracking-[0.1em] text-[var(--quiet)]">V4</span>
             </div>
-            <p className="mt-2 text-[0.63rem] font-semibold leading-relaxed text-[var(--quiet)]">
-              Plan, recovery, Garmin and coach decisions stay in one private training record.
-            </p>
           </div>
         </div>
       </aside>
 
-      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[#060806]/90 px-4 backdrop-blur-2xl md:hidden">
+      <header className="sticky top-0 z-40 flex min-h-14 items-center justify-between border-b border-[var(--border)] bg-[color:var(--surface-glass)] px-4 backdrop-blur-2xl md:hidden">
         <Link href="/" className="flex min-h-11 items-center gap-2.5">
-          <span className="tv-brand-mark h-8 w-8 rounded-lg">
-            <Dumbbell className="h-4 w-4" strokeWidth={2.6} aria-hidden="true" />
+          <span className="tv-brand-mark relative h-8 w-8 rounded-lg">
+            <Shield className="h-4.5 w-4.5" strokeWidth={2.4} aria-hidden="true" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--agoge-red)] ring-2 ring-[var(--surface)]" />
           </span>
           <span>
-            <span className="block text-sm font-[850] uppercase leading-none tracking-[-0.03em]">TrainVault</span>
-            <span className="mt-1 block text-[0.55rem] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">Athlete OS · V4</span>
+            <span className="agoge-wordmark block text-sm font-[900] uppercase leading-none">The Agoge</span>
+            <span className="agoge-submark mt-1 block text-[0.53rem] font-bold uppercase">Athlete OS · V4</span>
           </span>
         </Link>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            className="agoge-theme-toggle"
+          >
+            {theme === "dark" ? <Sun className="h-4.5 w-4.5" aria-hidden="true" /> : <Moon className="h-4.5 w-4.5" aria-hidden="true" />}
+          </button>
           <Link
             href="/command"
             aria-label="Command center"
             aria-current={pathname.startsWith("/command") ? "page" : undefined}
             className={`grid h-10 w-10 place-items-center rounded-xl border backdrop-blur ${
               pathname.startsWith("/command")
-                ? "border-[rgba(215,255,47,0.34)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
-                : "border-[var(--border)] bg-black/20 text-[var(--muted)]"
+                ? "border-[var(--accent-line)] bg-[var(--accent-wash)] text-[var(--accent)]"
+                : "border-[var(--border)] bg-[color:var(--surface-glass)] text-[var(--muted)]"
             }`}
           >
             <Gauge className="h-4.5 w-4.5" aria-hidden="true" />
@@ -113,8 +174,8 @@ export default function AppShell({ children }: AppShellProps) {
             aria-current={pathname.startsWith("/settings") ? "page" : undefined}
             className={`grid h-10 w-10 place-items-center rounded-xl border backdrop-blur ${
               pathname.startsWith("/settings")
-                ? "border-[rgba(215,255,47,0.34)] bg-[rgba(215,255,47,0.08)] text-[var(--accent)]"
-                : "border-[var(--border)] bg-black/20 text-[var(--muted)]"
+                ? "border-[var(--accent-line)] bg-[var(--accent-wash)] text-[var(--accent)]"
+                : "border-[var(--border)] bg-[color:var(--surface-glass)] text-[var(--muted)]"
             }`}
           >
             <Settings className="h-4.5 w-4.5" aria-hidden="true" />
@@ -122,10 +183,14 @@ export default function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="tv-shell-content min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-[15.5rem] md:pb-10">
+      <main className="tv-shell-content relative min-h-screen overflow-x-hidden pb-[calc(6rem+env(safe-area-inset-bottom))] md:ml-[15.5rem] md:pb-10">
+        <AgogeWarriorArt
+          className="agoge-shell-art pointer-events-none fixed -right-44 bottom-3 h-[34rem] w-[34rem] opacity-[0.045] md:-right-24 md:h-[42rem] md:w-[42rem] md:opacity-[0.06]"
+          variant="mountain"
+        />
         <div className="relative mx-auto w-full max-w-[1420px] px-3 py-4 sm:px-5 md:px-7 md:py-7 xl:px-9 xl:py-9">
           {showPlanStudioPrompt ? (
-            <div className="mb-7">
+            <div className="mb-5">
               <V4ProgrammeOverview />
             </div>
           ) : null}
@@ -135,22 +200,22 @@ export default function AppShell({ children }: AppShellProps) {
           {showPlanStudioPrompt ? (
             <Link
               href="/plan/build"
-              className="mb-6 flex items-center justify-between gap-4 rounded-2xl border border-[rgba(215,255,47,0.22)] bg-[linear-gradient(100deg,rgba(215,255,47,0.085),rgba(215,255,47,0.018)_52%,rgba(255,255,255,0.012))] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.16)] transition-transform hover:-translate-y-0.5 sm:p-5"
+              className="mb-5 flex items-center justify-between gap-4 rounded-2xl border border-[var(--accent-line)] bg-[linear-gradient(100deg,var(--accent-wash),rgba(255,64,86,0.035)_58%,transparent)] p-4 shadow-[0_18px_54px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-0.5 sm:p-5"
             >
               <div className="flex min-w-0 items-center gap-3.5">
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[rgba(215,255,47,0.32)] bg-[rgba(215,255,47,0.1)] text-[var(--accent)]">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[var(--accent-line)] bg-[var(--accent-wash)] text-[var(--accent)]">
                   <Sparkles className="h-4.5 w-4.5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
-                  <p className="tv-label text-[var(--accent)]">Plan Studio</p>
-                  <p className="mt-1 text-sm font-[780] tracking-[-0.015em] sm:text-base">Build a goal-led block around the week you actually live.</p>
+                  <p className="tv-label text-[var(--accent)]">Agoge Plan Studio</p>
+                  <p className="mt-1 text-sm font-[780] tracking-[-0.015em] sm:text-base">Build the next block around the athlete you actually are.</p>
                 </div>
               </div>
-              <ArrowRight className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+              <ArrowRight className="h-5 w-5 shrink-0 text-[var(--agoge-red)]" aria-hidden="true" />
             </Link>
           ) : null}
 
-          {showLatestSession ? <div className="mb-7"><LatestSessionHero /></div> : null}
+          {showLatestSession ? <div className="mb-5"><LatestSessionHero /></div> : null}
           {children}
         </div>
       </main>

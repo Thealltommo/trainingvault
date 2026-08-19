@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Mountain, Route, TimerReset, Trash2 } from "lucide-react";
+import QuickRunLog from "@/components/QuickRunLog";
 import { normalizeLimiter } from "@/lib/session-log";
 import {
   deleteSessionLog,
@@ -95,6 +96,8 @@ export default function LogPage() {
         <span className="tv-chip border-[var(--border)] bg-[var(--surface)] text-[var(--muted)]">{logs.length} sessions logged</span>
       </header>
 
+      <QuickRunLog defaultOpen={!programme || logs.length === 0} />
+
       {logs.length > 0 ? (
         <nav aria-label="Filter logs by category" className="flex gap-2 overflow-x-auto pb-1">
           {["all" as CategoryFilter, ...categoryFilters].map((category) => (
@@ -116,10 +119,13 @@ export default function LogPage() {
 
       {sortedLogs.length === 0 ? (
         <section className="tv-card p-5">
-          <p className="tv-label">No logs</p>
-          <h2 className="mt-2 text-xl font-black tracking-tight">Nothing banked yet.</h2>
-          <p className="mt-2 text-sm font-semibold text-[var(--muted)]">Complete a session to start building history.</p>
-          <Link href="/program" className="tv-button-primary mt-5 w-fit">Open training plan</Link>
+          <p className="tv-label">No history yet</p>
+          <h2 className="mt-2 text-xl font-black tracking-tight">Log the run you just did, or recover the old TrainVault history.</h2>
+          <p className="mt-2 text-sm font-semibold text-[var(--muted)]">A training plan is useful, but logging does not depend on having one.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link href="/migrate" className="tv-button-primary">Recover TrainVault data</Link>
+            <Link href="/program/build" className="tv-button-ghost">Build a plan</Link>
+          </div>
         </section>
       ) : (
         <section className="grid gap-2">

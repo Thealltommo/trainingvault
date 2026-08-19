@@ -44,8 +44,9 @@ export default function AppShell({ children }: AppShellProps) {
           ? "light"
           : "dark";
 
-    setTheme(preferred);
     document.documentElement.dataset.theme = preferred;
+    const frame = window.requestAnimationFrame(() => setTheme(preferred));
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   function toggleTheme() {

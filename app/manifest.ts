@@ -3,14 +3,14 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "TrainVault",
-    short_name: "TrainVault",
-    description: "TrainVault V4 — private athlete operating system for planning, recovery, Garmin, activity intelligence and adaptive coaching.",
+    name: "The Agoge",
+    short_name: "The Agoge",
+    description: "The Agoge V4 — private athlete operating system for planning, recovery, Garmin, activity intelligence and adaptive coaching.",
     start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: "#060806",
-    theme_color: "#060806",
+    background_color: "#07101e",
+    theme_color: "#07101e",
     orientation: "portrait-primary",
     categories: ["fitness", "health", "sports"],
     shortcuts: [
@@ -31,7 +31,7 @@ export default function manifest(): MetadataRoute.Manifest {
       {
         name: "Coach",
         short_name: "Coach",
-        description: "Ask TrainVault Coach about training or plan changes.",
+        description: "Ask The Agoge Coach about training or plan changes.",
         url: "/coach",
         icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
       },

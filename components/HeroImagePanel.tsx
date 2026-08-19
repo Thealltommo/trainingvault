@@ -27,9 +27,9 @@ export default function HeroImagePanel({
         src={src}
         alt=""
         fill
-        sizes="(max-width: 768px) 100vw, (max-width: 1280px) calc(100vw - 16rem), 1152px"
+        sizes="(max-width: 768px) 100vw, (max-width: 1280px) calc(100vw - 15rem), 1200px"
         className="object-cover"
-        style={{ objectPosition: "58% center" }}
+        style={{ objectPosition: "60% center" }}
         preload={priority}
         loading={priority ? undefined : "lazy"}
         onError={(event) => {
@@ -39,9 +39,9 @@ export default function HeroImagePanel({
       <div className="hero-overlay" aria-hidden="true" />
       <div className="hero-vignette" aria-hidden="true" />
       <div className="hero-stripe" aria-hidden="true" />
-      <div className="relative z-10 flex h-full max-w-3xl flex-col justify-end p-4 sm:p-6 lg:p-8">
-        {kicker ? <p className="tv-label text-[var(--accent)]">{kicker}</p> : null}
-        {title ? <h1 className="mt-2 text-5xl font-black uppercase leading-none sm:text-7xl">{title}</h1> : null}
+      <div className="relative z-10 flex h-full max-w-3xl flex-col justify-end p-4 sm:p-5 lg:p-6">
+        {kicker ? <p className="text-[0.68rem] font-black uppercase tracking-[0.15em] text-[#81afff]">{kicker}</p> : null}
+        {title ? <h1 className="mt-2 text-3xl font-black tracking-[-0.045em] text-white sm:text-4xl lg:text-5xl">{title}</h1> : null}
         {children}
       </div>
     </section>

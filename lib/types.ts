@@ -151,6 +151,11 @@ export type SessionLog = {
   completedAt: string;
   rpe: number;
   actualDurationMinutes?: number;
+  distanceKm?: number;
+  elevationM?: number;
+  averagePaceSecondsPerKm?: number;
+  averageHeartRate?: number;
+  terrain?: "road" | "track" | "trail" | "fell" | "treadmill" | "mixed";
   score?: string;
   limiter?: string;
   result?: string;
@@ -158,6 +163,7 @@ export type SessionLog = {
   blockResults?: BlockResult[];
 };
 
+// Internal names are retained for backwards-compatible snapshots already stored locally or in Supabase.
 export type TrainVaultBackup = {
   programme: Programme;
   logs: SessionLog[];

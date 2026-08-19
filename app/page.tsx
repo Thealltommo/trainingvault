@@ -1,122 +1,63 @@
 "use client";
 
 import { useMemo } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
+  Activity,
   ArrowRight,
-  Calendar,
-  ChartNoAxesCombined,
-  ClipboardList,
+  BrainCircuit,
+  CalendarDays,
+  Check,
+  ChevronRight,
   Dumbbell,
   Gauge,
+  Mountain,
+  Route,
+  ShieldCheck,
+  Target,
+  TriangleAlert,
   Upload,
 } from "lucide-react";
-import HeroImagePanel from "@/components/HeroImagePanel";
-import WorkoutCard from "@/components/WorkoutCard";
-import { HERO_IMAGES } from "@/lib/hero-images";
-import { normalizeLimiter } from "@/lib/session-log";
 import {
-  getAllWorkouts,
+  auditCurrentPlan,
+  buildCoachingInsights,
+  buildTrainingMetrics,
+  buildWeeklyTrend,
+  getGoalCopy,
+} from "@/lib/coaching";
+import { HERO_IMAGES } from "@/lib/hero-images";
+import {
   getNextIncompleteWorkout,
   getTodaysWorkout,
   useActiveProgrammeOptional,
   useNow,
   useSessionLogs,
   useTodayWorkoutOverride,
-  useWorkoutOverrides,
 } from "@/lib/storage";
-import type { SessionLog } from "@/lib/types";
 
-const linkCards = [
-  {
-    title: "Program",
-    body: "Weeks, sessions, focus tags.",
-    href: "/program",
-    icon: Dumbbell,
-  },
-  {
-    title: "Log",
-    body: "Completed work and notes.",
-    href: "/log",
-    icon: ClipboardList,
-  },
-  {
-    title: "Progress",
-    body: "Categories, RPE, totals.",
-    href: "/progress",
-    icon: ChartNoAxesCombined,
-  },
-  {
-    title: "Admin Import",
-    body: "Paste or reset programme JSON.",
-    href: "/admin/import",
-    icon: Upload,
-  },
-];
+function formatNumber(value: number, digits = 0) {
+  return new Intl.NumberFormat("en-GB", {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  }).format(value);
+}
 
-function getCountdownLabel(dateValue: string | undefined, now: number) {
-  if (!dateValue || now === 0) {
-    return null;
-  }
-
+function countdown(dateValue: string | undefined, now: number) {
+  if (!dateValue || now === 0) return null;
   const today = new Date(now);
   const target = new Date(`${dateValue}T00:00:00`);
   today.setHours(0, 0, 0, 0);
   target.setHours(0, 0, 0, 0);
-
-  const diffDays = Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
-
-  if (diffDays === 0) {
-    return "Today";
-  }
-
-  if (diffDays < 0) {
-    return `${Math.abs(diffDays)}d ago`;
-  }
-
-  return `${diffDays}d`;
+  return Math.ceil((target.getTime() - today.getTime()) / 86_400_000);
 }
 
-function getCurrentWeekLabel(startDate: string | null | undefined, durationWeeks: number, now: number) {
-  if (!startDate || now === 0) {
-    return "No start date";
-  }
-
-  const start = new Date(`${startDate}T00:00:00`);
-  const today = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-
-  const diffDays = Math.floor((today.getTime() - start.getTime()) / 86_400_000);
-
-  if (diffDays < 0) {
-    return "Pre-start";
-  }
-
-  const currentWeek = Math.floor(diffDays / 7) + 1;
-
-  if (currentWeek > durationWeeks) {
-    return "Complete";
-  }
-
-  return `Week ${currentWeek}`;
+function dayName(dayNumber: number) {
+  return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][Math.min(Math.max(dayNumber - 1, 0), 6)] ?? `Day ${dayNumber}`;
 }
 
-function getLatestLogSummary(log: SessionLog) {
-  if (log.blockResults && log.blockResults.length > 0) {
-    const doneBlocks = log.blockResults.filter((block) => block.status === "done").length;
-    const parts = [`${doneBlocks} blocks done`];
-    const loggedLimiter = normalizeLimiter(log.limiter);
-
-    if (loggedLimiter) {
-      parts.push(`limiter: ${loggedLimiter}`);
-    }
-
-    parts.push(`RPE ${log.rpe}`);
-    return parts.join(" / ");
-  }
-
-  return `RPE ${log.rpe}`;
+function metricNote(hasData: boolean, populated: string, missing: string) {
+  return hasData ? populated : missing;
 }
 
 export default function Home() {
@@ -124,281 +65,381 @@ export default function Home() {
   const logs = useSessionLogs();
   const now = useNow();
   const todayOverride = useTodayWorkoutOverride();
-  const workoutOverrides = useWorkoutOverrides();
   const todaysWorkout = programme ? getTodaysWorkout(programme, logs, now) : null;
-  const workouts = useMemo(() => (programme ? getAllWorkouts(programme) : []), [programme]);
-  const sourceWorkoutById = useMemo(() => new Map(workouts.map((workout) => [workout.id, workout] as const)), [workouts]);
   const completedWorkoutIds = useMemo(() => new Set(logs.map((log) => log.workoutId)), [logs]);
   const selectedTodayIsCompleted = Boolean(todaysWorkout && completedWorkoutIds.has(todaysWorkout.id));
   const nextIncompleteWorkout = programme
     ? getNextIncompleteWorkout(programme, logs, selectedTodayIsCompleted ? todaysWorkout?.id : undefined)
     : null;
   const actionWorkout = selectedTodayIsCompleted ? nextIncompleteWorkout : todaysWorkout;
-  const todayMode = programme
-    ? selectedTodayIsCompleted
-      ? todayOverride
-        ? "Manual completed / up next"
-        : "Completed / up next"
-      : todayOverride
-        ? "Manual override"
-        : programme.startDate
-          ? `Started ${programme.startDate}`
-          : "First incomplete"
-    : "No active programme";
-  const recentLogs = useMemo(
-    () =>
-      [...logs].sort(
-        (first, second) => new Date(second.completedAt).getTime() - new Date(first.completedAt).getTime(),
-      ),
-    [logs],
-  );
-  const latestLogByWorkoutId = useMemo(() => {
-    const latest = new Map<string, string>();
-
-    recentLogs.forEach((log) => {
-      if (!latest.has(log.workoutId)) {
-        latest.set(log.workoutId, log.completedAt);
-      }
-    });
-
-    return latest;
-  }, [recentLogs]);
-  const lastSevenDays = useMemo(() => {
-    const cutoff = now - 7 * 86_400_000;
-    return logs.filter((log) => new Date(log.completedAt).getTime() >= cutoff);
-  }, [logs, now]);
-  const averageRpe =
-    logs.length > 0 ? (logs.reduce((total, log) => total + log.rpe, 0) / logs.length).toFixed(1) : "0.0";
-  const modifiedWorkoutCount = workouts.filter((workout) => workoutOverrides[workout.id]).length;
-  const currentWeekLabel = programme
-    ? getCurrentWeekLabel(programme.startDate, programme.durationWeeks, now)
-    : "No active programme";
-  const targetCountdown = getCountdownLabel(programme?.targetDate, now);
-  const checkpointCountdown = getCountdownLabel(programme?.checkpointDate, now);
-  const latestLog = recentLogs[0];
+  const metrics = useMemo(() => buildTrainingMetrics(programme, logs, now), [programme, logs, now]);
+  const audit = useMemo(() => auditCurrentPlan(programme, logs, now), [programme, logs, now]);
+  const insights = useMemo(() => buildCoachingInsights(programme, logs, now), [programme, logs, now]);
+  const trend = useMemo(() => buildWeeklyTrend(programme, logs, now), [programme, logs, now]);
+  const goals = useMemo(() => getGoalCopy(programme), [programme]);
+  const raceDays = countdown(programme?.targetDate, now);
+  const maxDistance = Math.max(...trend.map((point) => point.distanceKm), 1);
+  const maxElevation = Math.max(...trend.map((point) => point.elevationM), 1);
+  const maxLoad = Math.max(...trend.map((point) => point.load), 1);
+  const runDataAvailable = metrics.runLogsWithMetrics > 0;
 
   if (!programme) {
     return (
-      <div className="grid gap-5">
-        <HeroImagePanel src={HERO_IMAGES.home} title="Build Your Engine" kicker="TrainVault" priority className="hero-media-large">
-          <p className="mt-4 max-w-xl text-lg font-bold text-[var(--muted)]">
-            Your plan. Your standard. Your time.
-          </p>
-          <Link href="/admin/import" className="tv-button-primary mt-5 w-fit">
-            Import programme
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        </HeroImagePanel>
-
-        <section className="tv-card border-[rgba(215,255,47,0.28)] p-5">
-          <p className="tv-label text-[var(--accent)]">No active programme</p>
-          <h1 className="mt-2 text-3xl font-black uppercase">Import or reset a programme to start training.</h1>
-          <p className="mt-3 max-w-2xl text-sm font-bold text-[var(--muted)]">
-            Logs are kept separately, so clearing a programme does not erase completed sessions unless you choose that in Admin.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <Link href="/admin/import" className="tv-button-primary">
-              Import programme
-            </Link>
-            <Link href="/admin/import" className="tv-button-ghost">
-              Restore from cloud
-            </Link>
-          </div>
-        </section>
-
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {linkCards.map((card) => {
-            const Icon = card.icon;
-
-            return (
-              <Link key={card.href} href={card.href} className="tv-card tv-card-hover block min-h-36 p-4">
-                <Icon className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
-                <h2 className="mt-4 text-lg font-black uppercase">{card.title}</h2>
-                <p className="mt-1 text-sm font-bold text-[var(--muted)]">{card.body}</p>
+      <div className="agoge-page">
+        <section className="relative min-h-[340px] overflow-hidden rounded-2xl border border-white/10 bg-[var(--sidebar)] text-white shadow-[var(--shadow-strong)]">
+          <Image
+            src={HERO_IMAGES.home}
+            alt=""
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 1200px"
+            className="object-cover opacity-55"
+            style={{ objectPosition: "60% center" }}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(3,15,32,0.97)_0%,rgba(3,20,42,0.85)_46%,rgba(3,20,42,0.22)_100%)]" />
+          <div className="absolute inset-x-0 bottom-0 h-1 bg-[linear-gradient(90deg,var(--accent),var(--red),transparent)]" />
+          <div className="relative z-10 flex min-h-[340px] max-w-3xl flex-col justify-end p-6 sm:p-8">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#7fb0ff]">The Agoge</p>
+            <h1 className="mt-3 text-4xl font-black tracking-[-0.05em] sm:text-6xl">Train. Adapt. Conquer.</h1>
+            <p className="mt-3 max-w-2xl text-base font-semibold leading-relaxed text-[#c4d1e0]">
+              Import your programme and the dashboard will audit its structure, learn from session RPE and run metrics, and surface the training decisions that actually matter.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link href="/admin/import" className="tv-button-primary">
+                <Upload className="h-4 w-4" aria-hidden="true" />
+                Import programme
               </Link>
-            );
-          })}
+              <Link href="/coaching" className="tv-button-ghost border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white">
+                See coaching model
+              </Link>
+            </div>
+          </div>
         </section>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-5">
-      <HeroImagePanel src={HERO_IMAGES.home} title="Build Your Engine" kicker="TrainVault" priority className="hero-media-large">
-        <p className="mt-4 max-w-xl text-lg font-bold text-[var(--muted)]">
-          Your plan. Your standard. Your time.
-        </p>
-        <div className="mt-5 flex flex-wrap gap-2 text-xs font-black uppercase text-[var(--muted)]">
-          <span className="border border-[var(--border)] bg-black px-2 py-1">Run</span>
-          <span className="border border-[var(--border)] bg-black px-2 py-1">Lift</span>
-          <span className="border border-[var(--border)] bg-black px-2 py-1">Prep</span>
-          {modifiedWorkoutCount > 0 ? (
-            <span className="border border-[var(--accent)] bg-[rgba(215,255,47,0.12)] px-2 py-1 text-[var(--accent)]">
-              {modifiedWorkoutCount} adjusted
-            </span>
-          ) : null}
-        </div>
-        {actionWorkout ? (
-          <Link href={`/session/${actionWorkout.id}`} className="tv-button-primary mt-5 w-fit">
-            Start Session
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        ) : null}
-      </HeroImagePanel>
+    <div className="agoge-page">
+      <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">Readiness</p>
+            <Gauge className="h-4.5 w-4.5 text-[var(--accent)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{metrics.readiness}<span className="text-sm font-bold text-[var(--muted)]">/100</span></p>
+          <p className="mt-1 text-xs font-bold text-[var(--green)]">{metrics.readinessLabel}</p>
+        </article>
 
-      <section className="grid gap-2 sm:grid-cols-4">
-        <article className="border border-[var(--border)] bg-[var(--surface)] p-3">
-          <p className="tv-label">Current Phase</p>
-          <p className="mt-1 text-sm font-black uppercase text-[var(--text)]">
-            {actionWorkout?.phase ?? todaysWorkout?.phase ?? "Not set"}
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">7d training load</p>
+            <Activity className="h-4.5 w-4.5 text-[var(--accent)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{metrics.load7d}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--muted)]">
+            {metrics.loadRatio ? `${metrics.loadRatio.toFixed(2)}× rolling baseline` : "Calibrating 28d baseline"}
           </p>
         </article>
-        <article className="border border-[var(--border)] bg-[var(--surface)] p-3">
-          <p className="tv-label">Current Week</p>
-          <p className="mt-1 text-sm font-black uppercase text-[var(--text)]">{currentWeekLabel}</p>
-        </article>
-        <article className="border border-[var(--border)] bg-[var(--surface)] p-3">
-          <p className="tv-label">Target Event</p>
-          <p className="mt-1 text-sm font-black uppercase text-[var(--text)]">
-            {targetCountdown ? `${targetCountdown} / ${programme.targetEvent ?? "Target"}` : "Not set"}
+
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">Run volume</p>
+            <Route className="h-4.5 w-4.5 text-[var(--accent)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{runDataAvailable ? `${formatNumber(metrics.distance7dKm, 1)} km` : "—"}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--muted)]">
+            {metricNote(runDataAvailable, "structured logs · last 7d", "log distance to unlock")}
           </p>
         </article>
-        <article className="border border-[var(--border)] bg-[var(--surface)] p-3">
-          <p className="tv-label">Checkpoint</p>
-          <p className="mt-1 text-sm font-black uppercase text-[var(--text)]">
-            {checkpointCountdown ? `${checkpointCountdown} / ${programme.checkpointName ?? "Checkpoint"}` : "Not set"}
+
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">Elevation</p>
+            <Mountain className="h-4.5 w-4.5 text-[var(--red)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{runDataAvailable ? `${formatNumber(metrics.elevation7dM)} m` : "—"}</p>
+          <p className="mt-1 text-xs font-semibold text-[var(--muted)]">
+            {metricNote(runDataAvailable, `${audit.hillSessions} hill/fell session${audit.hillSessions === 1 ? "" : "s"} planned`, "log elevation to unlock")}
           </p>
+        </article>
+
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">Plan quality</p>
+            <ShieldCheck className="h-4.5 w-4.5 text-[var(--accent)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{audit.score}<span className="text-sm font-bold text-[var(--muted)]">/100</span></p>
+          <p className={`mt-1 text-xs font-bold ${audit.gaps.length > 0 ? "text-[var(--amber)]" : "text-[var(--green)]"}`}>
+            {audit.gaps[0] ? `${audit.gaps.length} coaching flag${audit.gaps.length === 1 ? "" : "s"}` : "No structural flags"}
+          </p>
+        </article>
+
+        <article className="tv-kpi">
+          <div className="flex items-center justify-between gap-2">
+            <p className="tv-label">Target</p>
+            <Target className="h-4.5 w-4.5 text-[var(--red)]" aria-hidden="true" />
+          </div>
+          <p className="tv-kpi-value">{raceDays === null ? "—" : raceDays >= 0 ? `${raceDays}d` : "Done"}</p>
+          <p className="mt-1 truncate text-xs font-semibold text-[var(--muted)]">{programme.targetEvent ?? goals.primary}</p>
         </article>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
-        <section className="grid gap-4">
-          <div className="flex items-center justify-between gap-4">
+      <section className="grid gap-3 xl:grid-cols-[1.05fr_1fr_0.72fr]">
+        <article className="tv-card overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
             <div>
-              <p className="tv-label">Today</p>
-              <h2 className="mt-1 text-2xl font-black uppercase">Session card</h2>
-              <p className="mt-1 text-xs font-black uppercase text-[var(--muted)]">{todayMode}</p>
+              <p className="tv-label text-[var(--accent)]">This week</p>
+              <h2 className="mt-1 text-lg font-black tracking-tight">{audit.week?.title ?? "Training plan"}</h2>
             </div>
+            <Link href="/program" className="inline-flex items-center gap-1 text-xs font-extrabold text-[var(--accent)]">
+              Full plan <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
           </div>
 
-          {selectedTodayIsCompleted && todaysWorkout ? (
-            <article className="tv-card border-[rgba(215,255,47,0.28)] p-4">
-              <p className="tv-label text-[var(--accent)]">Completed today</p>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="min-w-0 break-words text-xl font-black uppercase">{todaysWorkout.title}</h3>
-                <span className="rounded-sm border border-[var(--accent)] bg-[rgba(215,255,47,0.12)] px-2 py-1 text-xs font-black uppercase text-[var(--accent)]">
-                  Logged
-                </span>
-              </div>
-              {actionWorkout ? (
-                <p className="mt-2 text-sm font-bold text-[var(--muted)]">
-                  Up next: <span className="text-[var(--text)]">{actionWorkout.title}</span>
-                </p>
-              ) : (
-                <p className="mt-2 text-sm font-bold text-[var(--muted)]">No incomplete sessions remain.</p>
-              )}
-            </article>
-          ) : null}
+          <div className="divide-y divide-[var(--border)]">
+            {(audit.week?.days ?? []).slice().sort((a, b) => a.dayNumber - b.dayNumber).map((day) => {
+              const workout = day.workout;
+              const completed = completedWorkoutIds.has(workout.id);
+              const active = actionWorkout?.id === workout.id;
 
-          {actionWorkout ? (
-            <WorkoutCard
-              workout={actionWorkout}
-              sourceWorkout={sourceWorkoutById.get(actionWorkout.id)}
-              href={`/session/${actionWorkout.id}`}
-              eyebrow={selectedTodayIsCompleted ? "Up Next" : "Today's Session"}
-              completed={completedWorkoutIds.has(actionWorkout.id)}
-              isToday={!selectedTodayIsCompleted && todaysWorkout?.id === actionWorkout.id}
-              isNext={selectedTodayIsCompleted}
-              variant="featured"
-              lastCompletedAt={latestLogByWorkoutId.get(actionWorkout.id)}
-              ctaLabel={selectedTodayIsCompleted ? "Start Next" : undefined}
-              index={0}
+              return (
+                <Link
+                  key={day.id}
+                  href={`/session/${workout.id}`}
+                  className={`grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--surface-strong)] ${active ? "bg-[var(--accent-soft)]" : ""}`}
+                >
+                  <div>
+                    <p className="text-[0.62rem] font-extrabold uppercase text-[var(--muted)]">{dayName(day.dayNumber)}</p>
+                    <p className="text-lg font-black leading-none text-[var(--text)]">{day.dayNumber}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-black text-[var(--text)]">{workout.title}</p>
+                      {active ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--red)]" /> : null}
+                    </div>
+                    <p className="mt-0.5 truncate text-xs font-semibold text-[var(--muted)]">
+                      {workout.durationMinutes} min · {workout.intensity} · {workout.focus.slice(0, 2).join(" / ") || workout.category}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {completed ? (
+                      <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--green-soft)] text-[var(--green)]">
+                        <Check className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                    ) : active ? (
+                      <span className="tv-chip border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]">Next</span>
+                    ) : (
+                      <span className="text-xs font-extrabold text-[var(--muted)]">RPE {workout.intensity === "hard" ? "8" : workout.intensity === "moderate" ? "6–7" : "2–4"}</span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="grid grid-cols-4 border-t border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-center">
+            <div>
+              <p className="tv-label">Runs</p>
+              <p className="mt-1 font-black">{audit.runSessions}</p>
+            </div>
+            <div>
+              <p className="tv-label">Quality</p>
+              <p className="mt-1 font-black">{audit.qualityRuns}</p>
+            </div>
+            <div>
+              <p className="tv-label">Hills</p>
+              <p className="mt-1 font-black">{audit.hillSessions}</p>
+            </div>
+            <div>
+              <p className="tv-label">CrossFit</p>
+              <p className="mt-1 font-black">{audit.crossFitSessions}</p>
+            </div>
+          </div>
+        </article>
+
+        <article className="tv-card overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)]">
+                <BrainCircuit className="h-4.5 w-4.5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="tv-label text-[var(--accent)]">Coaching insights</p>
+                <h2 className="mt-1 text-lg font-black tracking-tight">What changes the outcome</h2>
+              </div>
+            </div>
+            <Link href="/coaching" className="text-xs font-extrabold text-[var(--accent)]">Full report</Link>
+          </div>
+
+          <div className="divide-y divide-[var(--border)]">
+            {insights.slice(0, 5).map((insight) => (
+              <div key={insight.id} className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3 px-4 py-3">
+                <span className={`mt-1 h-8 w-1.5 rounded-full ${insight.tone === "red" ? "bg-[var(--red)]" : insight.tone === "amber" ? "bg-[var(--amber)]" : insight.tone === "green" ? "bg-[var(--green)]" : insight.tone === "purple" ? "bg-[var(--purple)]" : "bg-[var(--accent)]"}`} />
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-black text-[var(--text)]">{insight.title}</p>
+                    <span className="text-[0.62rem] font-extrabold uppercase text-[var(--muted)]">{insight.confidence}</span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold leading-relaxed text-[var(--muted)]">{insight.summary}</p>
+                  <p className="mt-1.5 text-xs font-bold leading-relaxed text-[var(--text)]">{insight.action}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <aside className="grid content-start gap-3">
+          <article className="relative overflow-hidden rounded-xl border border-white/10 bg-[var(--sidebar)] p-4 text-white shadow-[var(--shadow)]">
+            <Image
+              src="/assets/hero4.png"
+              alt=""
+              fill
+              sizes="360px"
+              className="object-cover opacity-24"
+              style={{ objectPosition: "70% center" }}
             />
-          ) : (
-            <article className="tv-card min-h-44 p-4">
-              <p className="tv-label">Complete</p>
-              <h3 className="mt-2 text-xl font-black uppercase">All sessions are logged</h3>
-              <p className="mt-2 text-sm font-bold text-[var(--muted)]">Import the next block when you are ready.</p>
-            </article>
-          )}
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <article className="tv-card p-4">
-              <p className="tv-label">Completed 7d</p>
-              <p className="mt-3 text-4xl font-black text-[var(--accent)]">{lastSevenDays.length}</p>
-              <p className="mt-1 text-sm font-bold text-[var(--muted)]">sessions banked</p>
-            </article>
-            <article className="tv-card p-4">
-              <p className="tv-label">Programme</p>
-              <p className="mt-3 text-4xl font-black text-[var(--accent)]">{workouts.length}</p>
-              <p className="mt-1 text-sm font-bold text-[var(--muted)]">total sessions</p>
-            </article>
-            <article className="tv-card p-4">
-              <p className="tv-label">Average RPE</p>
-              <p className="mt-3 text-4xl font-black text-[var(--accent)]">{averageRpe}</p>
-              <p className="mt-1 text-sm font-bold text-[var(--muted)]">logged effort</p>
-            </article>
-          </div>
-        </section>
-
-        <aside className="grid content-start gap-4">
-          <article className="tv-card p-4">
-            <div className="flex items-center justify-between">
-              <p className="tv-label">Readiness</p>
-              <Gauge className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-            </div>
-            <p className="mt-3 text-5xl font-black text-[var(--accent)]">82</p>
-            <div className="mt-4 grid gap-2 text-sm font-bold text-[var(--muted)]">
-              <div className="flex justify-between border-t border-[var(--border)] pt-2">
-                <span>Sleep</span>
-                <span className="text-[var(--text)]">7h 18m</span>
-              </div>
-              <div className="flex justify-between border-t border-[var(--border)] pt-2">
-                <span>Stress</span>
-                <span className="text-[var(--text)]">Low</span>
-              </div>
-              <div className="flex justify-between border-t border-[var(--border)] pt-2">
-                <span>Warmup</span>
-                <span className="text-[var(--text)]">Extended</span>
-              </div>
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,18,38,0.55),rgba(4,18,38,0.96))]" />
+            <div className="relative z-10">
+              <p className="text-[0.65rem] font-black uppercase tracking-[0.14em] text-[#88b4ff]">Primary mission</p>
+              <h2 className="mt-2 text-xl font-black tracking-tight">{goals.primary}</h2>
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-[#aebed1]">
+                Supported by {goals.secondary.toLowerCase()} and {goals.tertiary.toLowerCase()}.
+              </p>
+              {programme.targetDate ? (
+                <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-3 text-xs font-bold text-[#c7d5e5]">
+                  <CalendarDays className="h-4 w-4 text-[#88b4ff]" aria-hidden="true" />
+                  {programme.targetDate}
+                </div>
+              ) : null}
             </div>
           </article>
 
           <article className="tv-card p-4">
-            <div className="flex items-center justify-between">
-              <p className="tv-label">Latest Log</p>
-              <Calendar className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
-            </div>
-            {latestLog ? (
-              <div className="mt-3">
-                <h3 className="break-words font-black uppercase">{latestLog.workoutTitle}</h3>
-                <p className="mt-1 text-sm font-bold text-[var(--muted)]">{getLatestLogSummary(latestLog)}</p>
-                {latestLog.result && !latestLog.blockResults?.length ? (
-                  <p className="mt-3 max-h-10 overflow-hidden break-words border-l-2 border-[var(--accent)] pl-3 text-sm text-[var(--text)]">
-                    {latestLog.result}
-                  </p>
-                ) : null}
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="tv-label">Today / next</p>
+                <h2 className="mt-1 text-base font-black tracking-tight">{actionWorkout?.title ?? "Block complete"}</h2>
               </div>
+              <Dumbbell className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
+            </div>
+            {actionWorkout ? (
+              <>
+                <p className="mt-2 text-xs font-semibold leading-relaxed text-[var(--muted)]">
+                  {actionWorkout.targetStimulus ?? actionWorkout.coachNotes ?? `${actionWorkout.durationMinutes} min · ${actionWorkout.focus.slice(0, 3).join(" / ")}`}
+                </p>
+                <Link href={`/session/${actionWorkout.id}`} className="tv-button-primary mt-4 w-full">
+                  {selectedTodayIsCompleted ? "Start next" : todayOverride ? "Open selected" : "Start session"}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </>
             ) : (
-              <p className="mt-3 text-sm font-bold text-[var(--muted)]">No sessions logged yet.</p>
+              <p className="mt-2 text-xs font-semibold text-[var(--muted)]">Every session in the active programme is logged.</p>
             )}
           </article>
+
+          {audit.gaps[0] ? (
+            <article className="rounded-xl border border-[color-mix(in_srgb,var(--amber)_34%,var(--border))] bg-[var(--amber-soft)] p-4">
+              <div className="flex items-start gap-2">
+                <TriangleAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-[var(--amber)]" aria-hidden="true" />
+                <div>
+                  <p className="tv-label text-[var(--amber)]">Plan flag</p>
+                  <p className="mt-1 text-xs font-bold leading-relaxed text-[var(--text)]">{audit.gaps[0]}</p>
+                </div>
+              </div>
+            </article>
+          ) : null}
         </aside>
-      </div>
+      </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {linkCards.map((card) => {
-          const Icon = card.icon;
+      <section className="tv-card overflow-hidden">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+          <div>
+            <p className="tv-label text-[var(--accent)]">Performance snapshot</p>
+            <h2 className="mt-1 text-lg font-black tracking-tight">Four weeks, one screen</h2>
+          </div>
+          <Link href="/progress" className="inline-flex items-center gap-1 text-xs font-extrabold text-[var(--accent)]">
+            Performance <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
 
-          return (
-            <Link key={card.href} href={card.href} className="tv-card tv-card-hover block min-h-36 p-4">
-              <Icon className="h-6 w-6 text-[var(--accent)]" aria-hidden="true" />
-              <h2 className="mt-4 text-lg font-black uppercase">{card.title}</h2>
-              <p className="mt-1 text-sm font-bold text-[var(--muted)]">{card.body}</p>
-            </Link>
-          );
-        })}
+        <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Run distance",
+              value: runDataAvailable ? `${formatNumber(metrics.distance28dKm, 1)} km` : "No data yet",
+              max: maxDistance,
+              accessor: (point: (typeof trend)[number]) => point.distanceKm,
+              red: false,
+            },
+            {
+              label: "Elevation",
+              value: runDataAvailable ? `${formatNumber(metrics.elevation28dM)} m` : "No data yet",
+              max: maxElevation,
+              accessor: (point: (typeof trend)[number]) => point.elevationM,
+              red: true,
+            },
+            {
+              label: "Training load",
+              value: `${metrics.load7d} this week`,
+              max: maxLoad,
+              accessor: (point: (typeof trend)[number]) => point.load,
+              red: false,
+            },
+            {
+              label: "Session RPE",
+              value: metrics.averageRpe7d ? `${metrics.averageRpe7d.toFixed(1)} avg` : "No logs yet",
+              max: 10,
+              accessor: (point: (typeof trend)[number]) => point.averageRpe ?? 0,
+              red: true,
+            },
+          ].map((metric, metricIndex) => (
+            <article key={metric.label} className={`p-4 ${metricIndex > 0 ? "border-t border-[var(--border)] sm:border-l sm:border-t-0" : ""} ${metricIndex === 2 ? "sm:border-t xl:border-t-0" : ""}`}>
+              <p className="tv-label">{metric.label}</p>
+              <p className="mt-1.5 text-xl font-black tracking-tight text-[var(--text)]">{metric.value}</p>
+              <div className="mt-4 grid h-16 grid-cols-4 items-end gap-2">
+                {trend.map((point) => {
+                  const height = Math.max(metric.accessor(point) > 0 ? 8 : 2, (metric.accessor(point) / metric.max) * 100);
+                  return (
+                    <div key={`${metric.label}-${point.label}`} className="flex h-full items-end rounded-md bg-[var(--surface-strong)] p-1">
+                      <div
+                        className={`w-full rounded-sm ${metric.red ? "bg-[linear-gradient(180deg,var(--red),#ff7583)]" : "bg-[linear-gradient(180deg,var(--accent),#6aa7ff)]"}`}
+                        style={{ height: `${height}%` }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-1 grid grid-cols-4 gap-2 text-center text-[0.58rem] font-semibold text-[var(--muted)]">
+                {trend.map((point) => <span key={point.label}>{point.label}</span>)}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-3">
+        <Link href="/coaching" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
+          <div>
+            <p className="tv-label text-[var(--accent)]">Coaching</p>
+            <p className="mt-1 font-black tracking-tight">Why this plan, what changes next</p>
+          </div>
+          <BrainCircuit className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        </Link>
+        <Link href="/program" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
+          <div>
+            <p className="tv-label text-[var(--accent)]">Training plan</p>
+            <p className="mt-1 font-black tracking-tight">Sessions, moves, scaling and edits</p>
+          </div>
+          <Dumbbell className="h-5 w-5 shrink-0 text-[var(--accent)]" aria-hidden="true" />
+        </Link>
+        <Link href="/admin/import" className="tv-card tv-card-hover flex items-center justify-between gap-4 p-4">
+          <div>
+            <p className="tv-label text-[var(--red)]">Data</p>
+            <p className="mt-1 font-black tracking-tight">Import, sync and programme control</p>
+          </div>
+          <Upload className="h-5 w-5 shrink-0 text-[var(--red)]" aria-hidden="true" />
+        </Link>
       </section>
     </div>
   );

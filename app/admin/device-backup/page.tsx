@@ -3,12 +3,14 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, FileUp, ShieldCheck, Upload } from "lucide-react";
-import {
-  applyCloudDeviceSnapshot,
-  captureCloudDeviceSnapshot,
-  parseCloudDeviceSnapshot,
-  type CloudDeviceSnapshot,
-} from "@/lib/cloud-device-sync";
+
+type FullDeviceSnapshot = {
+  version: 1;
+  kind: "trainvault-full-device";
+  origin: string;
+  exportedAt: string;
+  entries: Record<string, string>;
+};
 
 function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -26,29 +28,70 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function snapshotStats(snapshot: CloudDeviceSnapshot) {
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function captureFullDeviceSnapshot(): FullDeviceSnapshot {
+  const entries: Record<string, string> = {};
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key) continue;
+    const value = window.localStorage.getItem(key);
+    if (value !== null) entries[key] = value;
+  }
+
+  return {
+    version: 1,
+    kind: "trainvault-full-device",
+    origin: window.location.origin,
+    exportedAt: new Date().toISOString(),
+    entries,
+  };
+}
+
+function parseFullDeviceSnapshot(value: unknown): FullDeviceSnapshot | null {
+  if (!isObject(value) || value.version !== 1 || value.kind !== "trainvault-full-device") return null;
+  if (typeof value.origin !== "string" || typeof value.exportedAt !== "string" || !isObject(value.entries)) return null;
+
+  const entries: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value.entries)) {
+    if (typeof raw === "string") entries[key] = raw;
+  }
+
+  return {
+    version: 1,
+    kind: "trainvault-full-device",
+    origin: value.origin,
+    exportedAt: value.exportedAt,
+    entries,
+  };
+}
+
+function snapshotStats(snapshot: FullDeviceSnapshot) {
   const keys = Object.keys(snapshot.entries);
   const bytes = new TextEncoder().encode(JSON.stringify(snapshot)).byteLength;
-  return { keys: keys.length, bytes };
+  const trainVaultKeys = keys.filter((key) => key.startsWith("trainvault_") || key === "selectedTodayWorkoutId").length;
+  return { keys: keys.length, trainVaultKeys, bytes };
 }
 
 export default function DeviceBackupPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [preview, setPreview] = useState<CloudDeviceSnapshot | null>(null);
+  const [preview, setPreview] = useState<FullDeviceSnapshot | null>(null);
 
   function exportDevice() {
     setError("");
     try {
-      const snapshot = captureCloudDeviceSnapshot();
+      const snapshot = captureFullDeviceSnapshot();
       const stats = snapshotStats(snapshot);
-      if (stats.keys === 0) {
-        throw new Error("No TrainVault browser-state keys were found on this device.");
-      }
+      if (stats.keys === 0) throw new Error("No browser-local state was found on this device.");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       downloadJson(`trainvault-full-device-${stamp}.json`, snapshot);
-      setMessage(`Downloaded ${stats.keys} local TrainVault keys (${formatBytes(stats.bytes)}). Keep this file safe before any redesign or cloud restore.`);
+      setMessage(
+        `Downloaded ${stats.keys} localStorage keys (${stats.trainVaultKeys} TrainVault keys, ${formatBytes(stats.bytes)}). Keep this file safe before any redesign or cloud restore.`,
+      );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Full-device export failed.");
     }
@@ -59,12 +102,13 @@ export default function DeviceBackupPage() {
     setMessage("");
     setError("");
     try {
-      const parsed = JSON.parse(await file.text()) as unknown;
-      const snapshot = parseCloudDeviceSnapshot(parsed);
-      if (!snapshot) throw new Error("That file is not a valid TrainVault full-device snapshot.");
-      setPreview(snapshot);
-      const stats = snapshotStats(snapshot);
-      setMessage(`Valid full-device snapshot: ${stats.keys} TrainVault keys (${formatBytes(stats.bytes)}), exported ${snapshot.exportedAt}.`);
+      const parsed = parseFullDeviceSnapshot(JSON.parse(await file.text()) as unknown);
+      if (!parsed) throw new Error("That file is not a valid TrainVault full-device snapshot.");
+      setPreview(parsed);
+      const stats = snapshotStats(parsed);
+      setMessage(
+        `Valid snapshot from ${parsed.origin}: ${stats.keys} localStorage keys (${stats.trainVaultKeys} TrainVault keys, ${formatBytes(stats.bytes)}), exported ${parsed.exportedAt}.`,
+      );
     } catch (readError) {
       setPreview(null);
       setError(readError instanceof Error ? readError.message : "Could not read backup file.");
@@ -74,10 +118,12 @@ export default function DeviceBackupPage() {
   function restoreDevice() {
     if (!preview) return;
     const confirmed = window.confirm(
-      "Replace this browser's TrainVault state with the selected full-device backup? Export the current device first if you may need to roll back.",
+      "Replace this origin's localStorage with the selected full-device backup? Export the current device first if you may need to roll back.",
     );
     if (!confirmed) return;
-    applyCloudDeviceSnapshot(preview);
+
+    window.localStorage.clear();
+    Object.entries(preview.entries).forEach(([key, value]) => window.localStorage.setItem(key, value));
     setMessage("Full-device backup restored. Reloading TrainVault now.");
     window.setTimeout(() => window.location.assign("/"), 500);
   }
@@ -93,7 +139,7 @@ export default function DeviceBackupPage() {
         <p className="tv-label text-[var(--accent)]">Local safety copy</p>
         <h1 className="mt-2 text-4xl font-black uppercase leading-none sm:text-5xl">Full device backup</h1>
         <p className="mt-3 max-w-2xl text-sm font-bold text-[var(--muted)]">
-          This exports every TrainVault browser-state key on this phone, even when there is no active programme. It is independent of Supabase and Garmin availability.
+          This exports every localStorage key on this exact TrainVault origin, even with no active programme. It does not depend on Supabase, Garmin or an imported plan.
         </p>
       </header>
 
@@ -103,7 +149,7 @@ export default function DeviceBackupPage() {
           <div>
             <h2 className="text-2xl font-black uppercase">Protect this phone first</h2>
             <p className="mt-2 text-sm font-bold leading-relaxed text-[var(--muted)]">
-              Use this before changing deployments, restoring cloud state, clearing site data, or replacing the app. The export includes local TrainVault records, activity/recovery caches, session logs, workout edits and other TrainVault-prefixed state that exists in this browser.
+              Use this before changing deployments, restoring cloud state, clearing site data or replacing the app. Capturing the whole origin avoids assuming which keys contain Garmin activity caches, recovery history, session logs, workout edits or other V4 state.
             </p>
           </div>
         </div>

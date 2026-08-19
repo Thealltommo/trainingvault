@@ -1,14 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --surface: #0d0d0d;
-  --elevated: #151515;
-  --border: rgba(255, 255, 255, 0.1);
-  --text: #f5f5f5;
-  --muted: #a3a3a3;
-  --accent: #d7ff2f;
-  --accent-dark: #99c900;
+  --background: #07101e;
+  --surface: #0c1828;
+  --elevated: #12243a;
+  --border: rgba(178, 202, 233, 0.15);
+  --text: #f2f6fc;
+  --muted: #9aaec7;
+  --accent: #4f8cff;
+  --accent-dark: #2f6fe0;
+  --agoge-red: #ff4056;
   --foreground: var(--text);
 }
 
@@ -23,8 +24,9 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    linear-gradient(135deg, rgba(215, 255, 47, 0.05) 0 1px, transparent 1px 22px),
-    var(--background);
+    radial-gradient(circle at 88% -8%, rgba(79, 140, 255, 0.1), transparent 34rem),
+    radial-gradient(circle at 5% 105%, rgba(255, 64, 86, 0.065), transparent 30rem),
+    linear-gradient(180deg, #081322 0%, #07101e 72%, #050d19 100%);
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -35,7 +37,7 @@ body {
 
 ::selection {
   background: var(--accent);
-  color: #050505;
+  color: #ffffff;
 }
 
 button,
@@ -47,8 +49,12 @@ textarea {
 
 .tv-card {
   border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent), var(--surface);
+  border-radius: 0.5rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent),
+    radial-gradient(circle at 0% 0%, rgba(79, 140, 255, 0.035), transparent 18rem),
+    var(--surface);
+  box-shadow: 0 18px 55px rgba(1, 9, 22, 0.14);
 }
 
 .tv-card-hover {
@@ -89,14 +95,15 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.375rem;
+  border-radius: 0.45rem;
   border: 1px solid var(--accent);
-  background: var(--accent);
+  background: linear-gradient(180deg, #649cff 0%, var(--accent) 58%, #397be9 100%);
   padding: 0.7rem 1rem;
-  color: #050505;
+  color: #ffffff;
   font-size: 0.875rem;
   font-weight: 900;
   text-transform: uppercase;
+  box-shadow: 0 10px 28px rgba(47, 111, 224, 0.16);
   transition:
     background-color 180ms ease,
     border-color 180ms ease,
@@ -105,7 +112,7 @@ textarea {
 
 .tv-button-primary:hover {
   border-color: var(--accent-dark);
-  background: var(--accent-dark);
+  background: linear-gradient(180deg, #4f8cff, var(--accent-dark));
 }
 
 .tv-button-ghost {
@@ -114,9 +121,9 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 0.375rem;
+  border-radius: 0.45rem;
   border: 1px solid var(--border);
-  background: #050505;
+  background: #081322;
   padding: 0.7rem 1rem;
   color: var(--text);
   font-size: 0.875rem;
@@ -136,21 +143,21 @@ textarea {
 .tv-input {
   min-height: 2.75rem;
   width: 100%;
-  border-radius: 0.375rem;
+  border-radius: 0.45rem;
   border: 1px solid var(--border);
-  background: #050505;
+  background: #081322;
   padding: 0 0.85rem;
   color: var(--text);
   outline: none;
 }
 
 .tv-input::placeholder {
-  color: #737373;
+  color: #71839a;
 }
 
 .tv-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(215, 255, 47, 0.4);
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.2);
 }
 
 .hero-media {
@@ -158,8 +165,8 @@ textarea {
   min-height: 240px;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  background: #050505;
+  border-radius: 0.5rem;
+  background: #07101e;
   isolation: isolate;
 }
 
@@ -176,8 +183,8 @@ textarea {
   inset: 0;
   z-index: 1;
   background:
-    linear-gradient(90deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.72) 42%, rgba(5, 5, 5, 0.2) 100%),
-    linear-gradient(0deg, rgba(5, 5, 5, 0.72) 0%, rgba(5, 5, 5, 0.08) 55%, rgba(5, 5, 5, 0.42) 100%);
+    linear-gradient(90deg, rgba(5, 15, 31, 0.96) 0%, rgba(5, 20, 40, 0.76) 42%, rgba(5, 20, 40, 0.22) 100%),
+    linear-gradient(0deg, rgba(5, 15, 31, 0.76) 0%, rgba(5, 15, 31, 0.08) 55%, rgba(5, 15, 31, 0.42) 100%);
 }
 
 .hero-vignette {
@@ -185,8 +192,8 @@ textarea {
   inset: 0;
   z-index: 2;
   box-shadow:
-    inset 0 0 120px rgba(0, 0, 0, 0.88),
-    inset 0 -80px 120px rgba(0, 0, 0, 0.65);
+    inset 0 0 120px rgba(0, 0, 0, 0.76),
+    inset 0 -80px 120px rgba(0, 0, 0, 0.55);
   pointer-events: none;
 }
 
@@ -197,8 +204,8 @@ textarea {
   z-index: 3;
   height: 4px;
   width: min(42rem, 72%);
-  background: linear-gradient(90deg, var(--accent), transparent);
-  box-shadow: 0 0 30px rgba(215, 255, 47, 0.28);
+  background: linear-gradient(90deg, var(--accent), var(--agoge-red), transparent);
+  box-shadow: 0 0 30px rgba(79, 140, 255, 0.22);
 }
 
 .premium-workout-card {
@@ -216,7 +223,7 @@ textarea {
 .premium-workout-card-image {
   z-index: -4;
   transform: scale(1.02);
-  filter: saturate(0.95) contrast(1.08);
+  filter: saturate(0.9) contrast(1.08);
   transition: transform 260ms ease;
 }
 
@@ -225,10 +232,10 @@ textarea {
 }
 
 .premium-workout-card-today {
-  border-color: rgba(215, 255, 47, 0.5);
+  border-color: rgba(79, 140, 255, 0.52);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 1px rgba(215, 255, 47, 0.12),
+    0 0 0 1px rgba(79, 140, 255, 0.12),
     0 24px 78px rgba(0, 0, 0, 0.46);
 }
 
@@ -238,7 +245,7 @@ textarea {
 }
 
 .premium-workout-card-next {
-  border-color: rgba(215, 255, 47, 0.28);
+  border-color: rgba(255, 64, 86, 0.3);
 }
 
 .premium-workout-card-next .premium-workout-card-rule {
@@ -250,8 +257,8 @@ textarea {
   inset: 0;
   z-index: -3;
   background:
-    linear-gradient(90deg, rgba(5, 5, 5, 0.96) 0%, rgba(5, 5, 5, 0.82) 42%, rgba(5, 5, 5, 0.34) 100%),
-    linear-gradient(180deg, rgba(5, 5, 5, 0.2) 0%, rgba(5, 5, 5, 0.72) 100%);
+    linear-gradient(90deg, rgba(5, 15, 31, 0.96) 0%, rgba(6, 25, 48, 0.84) 42%, rgba(6, 25, 48, 0.34) 100%),
+    linear-gradient(180deg, rgba(5, 15, 31, 0.2) 0%, rgba(5, 15, 31, 0.72) 100%);
 }
 
 .premium-workout-card-gloss {
@@ -259,8 +266,8 @@ textarea {
   inset: 0;
   z-index: -2;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.11), transparent 24%),
-    radial-gradient(circle at 12% 0%, rgba(215, 255, 47, 0.12), transparent 24rem);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent 24%),
+    radial-gradient(circle at 12% 0%, rgba(79, 140, 255, 0.12), transparent 24rem);
   pointer-events: none;
 }
 
@@ -271,7 +278,7 @@ textarea {
   z-index: -1;
   width: 9rem;
   height: 150%;
-  background: linear-gradient(180deg, transparent, rgba(215, 255, 47, 0.08), transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 64, 86, 0.07), transparent);
   transform: rotate(18deg);
   pointer-events: none;
 }
@@ -283,15 +290,15 @@ textarea {
   z-index: 0;
   width: 55%;
   height: 3px;
-  background: linear-gradient(90deg, var(--accent), transparent);
-  box-shadow: 0 0 24px rgba(215, 255, 47, 0.32);
+  background: linear-gradient(90deg, var(--accent), var(--agoge-red), transparent);
+  box-shadow: 0 0 24px rgba(79, 140, 255, 0.28);
 }
 
 .premium-workout-card:focus-within {
-  border-color: rgba(215, 255, 47, 0.55);
+  border-color: rgba(79, 140, 255, 0.56);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 0 0 1px rgba(215, 255, 47, 0.18),
+    0 0 0 1px rgba(79, 140, 255, 0.18),
     0 24px 70px rgba(0, 0, 0, 0.4);
 }
 
@@ -303,11 +310,11 @@ textarea {
   }
 
   .premium-workout-card:hover {
-    border-color: rgba(215, 255, 47, 0.42);
+    border-color: rgba(79, 140, 255, 0.44);
     transform: translateY(-3px);
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.12),
-      0 0 0 1px rgba(215, 255, 47, 0.1),
+      0 0 0 1px rgba(79, 140, 255, 0.1),
       0 28px 84px rgba(0, 0, 0, 0.5);
   }
 
